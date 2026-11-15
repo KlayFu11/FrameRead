@@ -23,7 +23,7 @@ Each implementer gets a fresh context, branch, and worktree under `.worktrees/`,
 ## Progress
 
 - [x] Observe Claude session `4f8056ea-9747-4623-ad40-d8ca5b1d9ed0` until explicit completion.
-- [ ] Close remaining ticket 01 acceptance gaps.
+- [x] Close remaining ticket 01 acceptance gaps.
 - [ ] Implement and integrate 02, then 03.
 - [ ] Run ready tickets 04, 05, 09 concurrently.
 - [ ] Integrate 06, then run 07 and 08 concurrently.
@@ -33,3 +33,5 @@ Each implementer gets a fresh context, branch, and worktree under `.worktrees/`,
 ## Session log
 
 - 2026-11-16: Claude completed at 01:06 CST, integration tip `0f05d38`. Ticket 01 remains claimed; its recorded local baseline is 176 passing tests. Root worktree has only pre-existing untracked `.claude/`. No implementation was started before Claude ended.
+- 2026-11-16: Ticket 01 resolved and merged at `4ffa24f` (implementation `431aa59`, evidence `275d0c7`). Final local suite: 177 passed; lint/type/lock checks passed; exact health CLI longest 0.369s; isolated runtime network observation had zero external TX with a positive control. Remote CI remains unrun. Ticket 02 started in `.worktrees/s0-ticket-02`.
+- 2026-11-16: Corrected local T1 ordering wording in M03 and Ticket03 to match existing SPEC §7.1/§9.1 and M01: look up accepted keys before the write gate, which applies only to new admission. Research notes: `C:/Users/quqibing/AppData/Local/Temp/frameread-s0-admission-notes.md`.

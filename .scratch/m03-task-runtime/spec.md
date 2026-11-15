@@ -96,7 +96,7 @@ Status: ready-for-agent
 
 ### 受理（T1）
 
-- [S0] 受理在一个 UoW 内顺序执行：获取实例锁并 `gate.require(admit)` 要求 `maintenance_mode=normal` 且 `restore_state=normal`（Q14、Q15、SPEC §7.1）→ 按 `(operation_scope, idempotency_key)` 查重 → 比对 digest → 判定执行槽与等待位 → 写 task、初始 Outbox 与 accepted 事件。幂等查重先于容量判定与默认配置解析（SPEC §9.1）。
+- [S0] 受理在一个 UoW 内顺序执行：获取实例锁 → 按 `(operation_scope, idempotency_key)` 查重并比对 digest；已受理操作返回原结果，不同 digest 返回冲突。仅查无同键的新受理执行 `gate.require(admit)`，要求 `maintenance_mode=normal` 且 `restore_state=normal`（Q14、Q15、SPEC §7.1、§9.1）→ 判定执行槽与等待位 → 写 task、初始 Outbox 与 accepted 事件。幂等查重先于写入门禁、容量判定与默认配置解析，使维护状态下的幂等找回仍可执行（M01 §3.1、SPEC §7.1、§9.1）。
 - [S0] `Idempotency-Key` 头必填，严格校验为 UUIDv4（R6，以 SPEC §3 为准）。缺失或非法返回 `422 INVALID_INPUT`，不写任何记录（Q20）。
 - [S0] `operation_scope` 由服务端固定生成，S0 仅使用 `video:new`；调用方不能指定 scope（SPEC §3，Q20）。
 - [S0] 同键同 digest 返回原 `TaskAccepted`，即使原任务已结束也返回当前状态（SPEC §4.1）。`replayed` 仅在找回已有任务时为 true（D42）。

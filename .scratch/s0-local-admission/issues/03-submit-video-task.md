@@ -12,7 +12,7 @@
 - [ ] `POST /video-tasks`：`VideoTaskCreate` 完整字段、`extra='forbid'`；配置字段非 null `422`；`intent=reinterpret` `422`（`intent_not_available`）；topic 必须有 focus（Q41、Q45、D55）
 - [ ] `Idempotency-Key` 必填 UUIDv4；scope 为 `video:new`；digest 中空配置写 `"$default"` sentinel，`effective_input_json` 带 `config_resolution: "unresolved"`（R6、D53）
 - [ ] `tasks`、`task_outbox`、`task_events`、`resource_slots` 迁移；枚举以 CHECK 固定；`UNIQUE(operation_scope, idempotency_key)`；migrate 入口在同一 UoW 内写策略后调用 `sync_execution_slots` 预建 `execution:video` 槽行（E7）
-- [ ] T1 在一个事务内：实例锁 → `gate.require(admit)` → 同键查重（先于容量）→ digest 比对 → 取空执行槽或等待位 → task + Outbox（pending/blocked）+ `accepted` 事件；`deadline_at = db_now() + total_timeout`（E1）
+- [ ] T1 在一个事务内：实例锁 → 同键查重与 digest 比对（先于门禁、容量与默认配置解析，已受理操作直接找回）→ 仅新受理执行 `gate.require(admit)` → 取空执行槽或等待位 → task + Outbox（pending/blocked）+ `accepted` 事件；`deadline_at = db_now() + total_timeout`（E1；SPEC §7.1、§9.1，维护状态下允许幂等找回）
 - [ ] 同键同 digest 返回原 `TaskAccepted`（`replayed=true`）；不同 digest `409 IDEMPOTENCY_CONFLICT` 带原 `task_id`；满额 `503 QUEUE_FULL` 且无任何新增行
 - [ ] `GET /operations/{scope}/{key}` 找到返回 `200`，未找到 `404`
 - [ ] `GET /tasks/{id}`：REPEATABLE READ 一致快照，字段完整（S0：`draft_summary=null`、`unknown_call_count=0`、`allowed_actions` 推导），`progress` 为 `{stage, observed_at}`（Q31、D49）

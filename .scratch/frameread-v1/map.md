@@ -1,6 +1,6 @@
 # FrameRead V1 模块地图与实施进度
 
-日期：2026-11-15。状态：模块划分已确认；全部模块尚未 Grill，没有模块 SPEC、Ticket 或实现代码。
+日期：2026-11-16。状态：批次 A 模块 SPEC 已确认，S0 实施中；完成情况与证据见 §10。
 
 需求依据为 [PRD](../../docs/prototype/PRD.md) 与 [ADR](../../docs/adr/)，技术基线为 [SPEC_V1](../../docs/prototype/SPEC_V1.md)，术语见 [GLOSSARY](../../GLOSSARY.md)，REQ/AT/S 映射见[追踪矩阵](../../docs/prototype/PRD_SPEC_Traceability.md)。本文只定义模块归属、依赖和进度，不新增需求；与上述文档冲突时以上述文档为准，并记入 [§11](#11-待模块-grill-解决的问题)。下文 `SPEC §n` 指 SPEC_V1 第 n 节（锚点 `#spec-NN`）。
 
@@ -397,7 +397,7 @@ L0 底座      M01 实例门禁与平台底座
 
 | 切片 | 新增所需模块 SPEC（另含全部前序切片所需） | Ticket 目录 | Ticket 完成/总数 | AT 证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 0/10（01 claimed，待远端 CI） | `docs/validation/s0/` | 进行中 |
+| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 1/10（01 resolved，02 实施中） | `docs/validation/s0/01-platform-skeleton.md` | 进行中 |
 | S1 | M05、M06、M07、M08、M09、M10、M11，M12 复核 | `.scratch/s1-subtitle-article/` | 0/0 | — | 未开始 |
 | S2 | — | `.scratch/s2-platforms-asr/` | 0/0 | — | 未开始 |
 | S3 | — | `.scratch/s3-request-behaviors/` | 0/0 | — | 未开始 |
@@ -419,7 +419,7 @@ L0 底座      M01 实例门禁与平台底座
 
 ### 10.4 当前可执行
 
-- 批次 A 五个模块 Grill 已对齐，逐条决定见 [grill-batch-a.md](grill-batch-a.md)。五份模块 SPEC 已确认，SPEC 待确认事项的裁决见 [spec-resolutions-batch-a.md](spec-resolutions-batch-a.md)。S0 已拆为 10 个 Ticket（`.scratch/s0-local-admission/issues/`）。下一步：从 01 开始实现；05、09 在 03 后、07、08 在 06 后可并行。
+- 批次 A 五个模块 Grill 已对齐，逐条决定见 [grill-batch-a.md](grill-batch-a.md)。五份模块 SPEC 已确认，SPEC 待确认事项的裁决见 [spec-resolutions-batch-a.md](spec-resolutions-batch-a.md)。S0 已拆为 10 个 Ticket（`.scratch/s0-local-admission/issues/`）。01 已合入 `4ffa24f`，02 正在独立 worktree 实施；后续 04、05、09 在 03 后、07、08 在 06 后可并行。执行记录见 [S0 实施计划](../s0-local-admission/task_plan.md)。
 - S0 在分支 `feat/s0-local-admission` 上进行；基线文档已提交于 `b7674bb`。
 
 ## 11. 待模块 Grill 解决的问题
