@@ -1,0 +1,8 @@
+== 基线
+{"live": 200, "ready": 200, "status": "ready", "checks": {"postgres": ["ready", null], "migration_head": ["ready", null], "root_key": ["ready", null], "redis": ["ready", null]}}
+== 停止 Redis
+{"live": 200, "ready": 200, "status": "degraded", "checks": {"postgres": ["ready", null], "migration_head": ["ready", null], "root_key": ["ready", null], "redis": ["degraded", "connection_failed"]}}
+== 停止 PostgreSQL
+{"live": 200, "ready": 503, "status": "unavailable", "checks": {"postgres": ["unavailable", "connection_failed"], "migration_head": ["unavailable", "connection_failed"], "root_key": ["unavailable", "connection_failed"], "redis": ["ready", null]}}
+== 恢复
+{"live": 200, "ready": 200, "status": "ready", "checks": {"postgres": ["ready", null], "migration_head": ["ready", null], "root_key": ["ready", null], "redis": ["ready", null]}}

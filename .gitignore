@@ -13,6 +13,9 @@
 !.env.sample
 !.env.template
 /secrets/
+/deploy/secrets/
+*.pem
+*.key
 
 # Python and frontend dependencies / generated output
 .venv/

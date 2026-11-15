@@ -1,0 +1,14 @@
+# 非敏感启动配置。[policy] 只在空库初始化时写入 instance_state.policy_json，
+# 之后以数据库为准（Q14）；凭据只通过 *_FILE 指向的 secret 文件提供。
+
+[admin]
+origins = ["http://127.0.0.1:8080", "http://localhost:8080"]
+
+[deployment]
+api_admin_instances = 1
+worker_concurrency = 2
+control_instances = 1
+
+[policy.pools.video]
+execution_slots = 2
+waiting_slots = 4

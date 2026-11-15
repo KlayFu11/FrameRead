@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7.4-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      FRAMEREAD_TEST_PG_URL: postgresql+psycopg://postgres:ci@127.0.0.1:5432/postgres
+      FRAMEREAD_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.9"
+      - name: 锁文件一致性
+        run: uv lock --check
+      - name: 安装依赖
+        run: uv sync --frozen
+      - name: Ruff
+        run: uv run ruff check src tests && uv run ruff format --check src tests
+      - name: mypy
+        run: uv run mypy
+      - name: 单元、接口与集成测试（真实 PostgreSQL/Redis）
+        run: uv run pytest -q
+      - name: OpenAPI 契约导出可重复
+        run: |
+          uv run frameread openapi export --out /tmp/a.json
+          uv run frameread openapi export --out /tmp/b.json
+          cmp /tmp/a.json /tmp/b.json
+
+  compose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.9"
+      - name: 生成密钥
+        working-directory: backend
+        run: uv sync --frozen && uv run frameread secrets init --dir ../deploy/secrets
+      - name: 构建与迁移
+        run: |
+          docker compose -f deploy/compose.yaml build
+          docker compose -f deploy/compose.yaml run --rm migrate
+      - name: 启动并等待服务存活
+        run: |
+          docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 120
+          docker compose -f deploy/compose.yaml ps
+      - name: 服务就绪与加固结构
+        run: scripts/check_compose_s0.sh
+      - name: 失败时输出日志
+        if: failure()
+        run: docker compose -f deploy/compose.yaml logs --tail=200

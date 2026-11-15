@@ -1,0 +1,64 @@
+[project]
+name = "frameread"
+version = "0.1.0"
+description = "FrameRead 后端：视频解读任务的受理、执行与正式文章版本"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.14",
+    "cryptography>=44",
+    "fastapi>=0.115",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6",
+    "redis>=5.2",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
+    "structlog>=24.4",
+    "typer>=0.15",
+    "uvicorn[standard]>=0.32",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: 需要真实 PostgreSQL 与 Redis",
+    "faults: 外部故障注入",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+ignore = ["S101"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Option", "typer.Argument", "fastapi.Depends"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S608"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["frameread"]
+mypy_path = "src"
+
+[project.scripts]
+frameread = "frameread.cli.main:run"
+frameread-live = "frameread.observability.liveness:main"

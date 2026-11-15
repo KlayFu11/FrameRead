@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# 后端镜像：api-admin、worker、control、migrate 共用；S0 不安装 FFmpeg/yt-dlp（D15）
+FROM ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 AS uv
+
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS build
+COPY --from=uv /uv /usr/local/bin/uv
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_HTTP_TIMEOUT=300 UV_CACHE_DIR=/uv-cache
+WORKDIR /app
+COPY backend/pyproject.toml backend/uv.lock ./
+# 依赖层只随 uv.lock 变化；下载缓存跨构建复用
+RUN --mount=type=cache,target=/uv-cache uv sync --frozen --no-dev --no-install-project
+COPY backend/src ./src
+RUN --mount=type=cache,target=/uv-cache uv sync --frozen --no-dev --no-editable
+
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+RUN groupadd --system --gid 10001 frameread \
+    && useradd --system --uid 10001 --gid frameread --no-create-home --shell /usr/sbin/nologin frameread
+COPY --from=build /app/.venv /app/.venv
+ENV PATH=/app/.venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+USER 10001:10001

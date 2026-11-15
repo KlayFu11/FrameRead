@@ -1,0 +1,196 @@
+# FrameRead S0 本地部署。命令与启动顺序见 deploy/README.md。
+name: frameread
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-hardening: &hardening
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging: *logging
+  restart: unless-stopped
+
+x-backend: &backend
+  <<: *hardening
+  image: frameread-backend:local
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile.backend
+  user: "10001:10001"
+  tmpfs:
+    - /tmp
+    - /run/frameread
+  environment: &backend-env
+    FRAMEREAD_SETTINGS: /etc/frameread/settings.toml
+    MASTER_KEY_FILE: /run/secrets/master_key
+    DATABASE_DSN_FILE: /run/secrets/database_dsn_app
+    REDIS_URL_FILE: /run/secrets/redis_url
+  volumes:
+    - ./settings.toml:/etc/frameread/settings.toml:ro
+  networks: [internal]
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+    user: "70:70"
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_superuser_password
+    secrets: [pg_superuser_password, pg_migrate_password, pg_app_password]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/run/postgresql
+      - /tmp
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 200
+
+  redis:
+    <<: *hardening
+    image: redis:7.4-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    user: "999:1000"
+    secrets: [redis_password]
+    # 密码写入 tmpfs 中的配置文件，不出现在进程参数里
+    command:
+      - sh
+      - -c
+      - >-
+        umask 077 &&
+        printf 'requirepass %s\n' "$$(cat /run/secrets/redis_password)" > /tmp/redis.conf &&
+        exec redis-server /tmp/redis.conf --appendonly yes --maxmemory-policy noeviction
+    volumes:
+      - redisdata:/data
+    tmpfs:
+      - /tmp
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+
+  migrate:
+    <<: *backend
+    profiles: [tools]
+    restart: "no"
+    command: ["frameread", "migrate"]
+    # one-shot 工具：`run --rm migrate` 时先拉起 postgres 并等待其接受连接
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FRAMEREAD_SETTINGS: /etc/frameread/settings.toml
+      MASTER_KEY_FILE: /run/secrets/master_key
+      DATABASE_DSN_FILE: /run/secrets/database_dsn_migrate
+    secrets: [master_key, database_dsn_migrate]
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+
+  api-admin:
+    <<: *backend
+    command:
+      - uvicorn
+      - frameread.api.admin_app:create_app
+      - --factory
+      - --host=0.0.0.0
+      - --port=8000
+      - --no-server-header
+      # uvicorn 访问日志含完整 URL 与 query，不经字段 allowlist（SPEC §20）
+      - --no-access-log
+    secrets: [master_key, database_dsn_app, redis_url]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 128
+
+  worker:
+    <<: *backend
+    command: ["frameread", "worker", "run"]
+    secrets: [master_key, database_dsn_app, redis_url]
+    healthcheck:
+      test: ["CMD", "frameread-live", "--name", "worker"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 128
+
+  control:
+    <<: *backend
+    command: ["frameread", "control", "run"]
+    secrets: [master_key, database_dsn_app, redis_url]
+    healthcheck:
+      test: ["CMD", "frameread-live", "--name", "control"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+
+  gateway:
+    <<: *hardening
+    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    user: "101:101"
+    command: ["nginx", "-c", "/etc/frameread/nginx.conf", "-g", "daemon off;"]
+    volumes:
+      - ./gateway/nginx.conf:/etc/frameread/nginx.conf:ro
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks: [internal, edge]
+    cpus: 0.5
+    mem_limit: 128m
+    pids_limit: 64
+
+networks:
+  internal:
+    internal: true
+  edge: {}
+
+volumes:
+  pgdata: {}
+  redisdata: {}
+
+secrets:
+  master_key:
+    file: ./secrets/master_key
+  pg_superuser_password:
+    file: ./secrets/pg_superuser_password
+  pg_migrate_password:
+    file: ./secrets/pg_migrate_password
+  pg_app_password:
+    file: ./secrets/pg_app_password
+  redis_password:
+    file: ./secrets/redis_password
+  database_dsn_migrate:
+    file: ./secrets/database_dsn_migrate
+  database_dsn_app:
+    file: ./secrets/database_dsn_app
+  redis_url:
+    file: ./secrets/redis_url
