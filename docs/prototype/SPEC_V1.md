@@ -143,11 +143,11 @@ operation_scope由服务端固定为`video:new`、`video:reinterpret`、`task:re
 | `POST /session`；`GET /session`；`DELETE /session` | 凭据 → 会话 cookie 与 CSRF token；状态/退出 | 同步；不是注册账号，失败统一 `401` |
 | `GET/POST /provider-configs`；`GET/PATCH /provider-configs/{id}` | 配置 DTO；PATCH 带 `If-Match: version` | 同步保存；语义修改新建不可变 revision，密钥字段 write-only |
 | `POST /provider-configs/{id}/checks` | 检查类型、幂等键 → `TaskAccepted` | Worker 显式小样本调用；展示可能费用，不在 GET 执行 |
-| `POST /videos/matches` | 视频与解读选项 → 最近匹配的 `ArticleSummary` 或 `match:null` | 同步只读，零模型调用；失败不视为空 |
+| `POST /videos/matches` | 视频与解读选项 → 最近匹配的 `ArticleSummary` 或 `match:null`；短链未解析时 `match:null, reason=short_link_unresolved` | 同步只读，零模型调用，不联网解析短链；失败不视为空 |
 | `POST /video-tasks` | `VideoTaskCreate`、幂等键 → `TaskAccepted` | 短受理事务；默认 UI 先匹配，已有结果仅点“重新解读”才提交 |
 | `POST /tasks/{id}/retries` | 确认的有效配置/原输入、幂等键 → 新任务 | 只接受原终态为 failed/canceled；新 ID 与 `retry_of` |
 | `GET /tasks`；`GET /tasks/{id}` | 过滤/游标 → 列表或 `TaskSnapshot` | PG 当前快照，支持非关键进度 |
-| `GET /operations/{scope}/{key}` | → 原 `TaskAccepted` 或 `404` | 找回已受理操作；DB 不可用为 `503`，不能证明没有任务 |
+| `GET /operations/{scope}/{key}` | → 原 `TaskAccepted`（`200`）或 `404` | 找回已受理操作；DB 不可用为 `503`，不能证明没有任务；`404` 只表示查询时没有该受理，客户端仍以原键重发，不换新键 |
 | `POST /tasks/{id}/cancel` | → 当前 `TaskSnapshot` | 重复取消幂等；运行中 `202`，终态/排队取消 `200` |
 | `GET /tasks/{id}/events`；`GET /tasks/{id}/draft` | SSE cursor；未完成草稿 | 只读，不创建生成任务 |
 | `GET /articles`；`GET /articles/{version_id}` | 摘要分页；固定版本 `ArticleView` | 正式版本，版本不可变 |
@@ -158,7 +158,7 @@ operation_scope由服务端固定为`video:new`、`video:reinterpret`、`task:re
 | `POST /articles/{id}/exports`；`GET /exports/{id}`；`GET /exports/{id}/download` | `markdown/zip`、幂等键；状态；文件 | Worker 打包，同步受保护下载；无模型调用 |
 | `POST /articles/{id}/shares`；`GET /articles/{id}/shares` | 固定版本 → 新 token 一次回显；状态列表 | 同步；普通列表不重新展示 token 明文 |
 | `DELETE /shares/{id}`；`POST /shares/{id}/reissues` | 撤销；恢复核对确认与幂等键 → 新链接 | 同步；重新签发新记录与新 token，旧记录不启用 |
-| `GET /overview`；`GET /health` | 脱敏运行概览；依赖状态 | 只读；P1 只组织已有数据 |
+| `GET /overview`；`GET /health` | 脱敏运行概览；依赖状态汇总 | 只读；P1 只组织已有数据，S11 交付；与进程内部 `/health/live`、`/health/ready`（不经 gateway，见 [20](#spec-20)）不同 |
 
 分享 app 仅有 `GET /api/v1/public/shares/{token}` 和 `GET /api/v1/public/shares/{token}/assets/{asset_id}`，以及分享 SPA 所需静态构建资源。无公开导出、原字幕、QA、任务或 SSE。分享页面 `/s/{token}` 的初始空壳不含私有数据；无效内容读取统一 `404 SHARE_NOT_AVAILABLE`，DB 不可用返回 `503`，不能用已缓存授权放行。
 
@@ -183,15 +183,18 @@ operation_scope由服务端固定为`video:new`、`video:reinterpret`、`task:re
 | HTTP | 机器类别 | 客户端动作 |
 | --- | --- | --- |
 | `422` | `INVALID_INPUT/UNSUPPORTED_VIDEO/INVALID_ANCHOR` | 修正输入，未知字段拒绝 |
-| `409` | `IDEMPOTENCY_CONFLICT/CONVERSATION_BUSY/VERSION_CONFLICT/INVALID_TRANSITION` | 不覆盖原操作；查询状态或处理冲突 |
+| `409` | `IDEMPOTENCY_CONFLICT/CONVERSATION_BUSY/VERSION_CONFLICT/INVALID_TRANSITION/CURSOR_RESET_REQUIRED` | 不覆盖原操作；查询状态或处理冲突 |
 | `429` | `RATE_LIMITED` | 按 Retry-After；不换键规避 |
 | `503` | `QUEUE_FULL` | 明确未受理，无新增任务/Outbox；容量释放后可用原键再次申请 |
 | `503` | `ADMISSION_UNCONFIRMED` | commit ACK 丢失或提交结果无法判断；保留原键重发/查询，禁止自动新键 |
 | `503` | `DEPENDENCY_UNAVAILABLE/MAINTENANCE` | 显示依赖/维护原因；已受理任务仍可在恢复后查询 |
 | `401/403` | `ADMIN_REQUIRED/CSRF_REJECTED/ORIGIN_REJECTED` | 不执行管理操作 |
 | `404` | `NOT_FOUND/SHARE_NOT_AVAILABLE` | 无效、撤销、越界分享统一不可访问 |
+| `500` | `INTERNAL_ERROR` | 未预期异常；`action=retry_later_or_report`，凭 request ID 排障，不返回异常内容 |
 
 显式已回滚的 DB 故障与提交不确定分开记录 `commit_outcome=rolled_back/unknown`。服务端尝试用新连接按幂等键确认已提交事实，仍未知才返回未确认。后台业务失败在查询中保持 `200` 和 task failed，而不是把 HTTP 受理改成失败。错误不返回 SQL、内部路径、上游 body、原始 URL 或异常栈。
+
+任务错误码只出现在 `TaskSnapshot.error.code`，不是 HTTP 类别，与上表共用同一登记表：`DEADLINE_EXCEEDED`（运行时发现总期限耗尽，含排队、retry_wait 与失联后超期）、`DISPATCH_EXHAUSTED`（投递重试预算耗尽）、`PIPELINE_NOT_AVAILABLE`（仅 S0 骨架流水线，S1 删除）、`INTERNAL_ERROR`；handler 自行发现超期时使用 handler 的错误码；后续切片新增的任务错误码（如 `ASR_REQUIRED`、`CREDENTIAL_SCOPE_MISMATCH`、媒体类错误）在首次实现时登记。
 
 <a id="spec-05"></a>
 ## 5. Pydantic 与产物 Schema
@@ -204,6 +207,7 @@ operation_scope由服务端固定为`video:new`、`video:reinterpret`、`task:re
 | `ProviderConfigWrite/View` | `name,kind=chat/asr/search,adapter,base_url,model,capabilities,limits`；写入含 write-only secret；读取仅 `has_secret,secret_hint,semantic_revision,version,last_check`；不回显可还原的凭据片段 |
 | `TaskAccepted` | `task_id,kind,status,accepted_at,deadline_at,snapshot_url,replayed,operation_scope`；QA 另含 turn ID |
 | `TaskSnapshot` | `id,kind,intent,status,stage,state_revision,event_seq,cursor,instance_epoch,attempt_no,progress,deadline_at,cancel_requested_at,result,error,draft_summary,allowed_actions,unknown_call_count`；`result` 按 kind 判别 |
+| `TaskListItem` | `id,kind,intent,status,stage,state_revision,instance_epoch,created_at,deadline_at,cancel_requested_at,error_code`；列表行摘要，不含 result/progress |
 | `TimeRange` | `start_ms>=0,end_ms>start_ms,precision=segment/window/frame`；必须在实际 duration 内，不能由客户端任意指定 precision |
 | `VideoTextEvidence` | `kind=video_text,snapshot_id,first_segment_id,last_segment_id,time_range,quote`；片段连续、归属一致，quote 必须是所存文本的连续原文 |
 | `VideoFrameEvidence` | `kind=video_frame,snapshot_id,asset_id,actual_ms,observation_id`；真实帧、对应视觉输入与观察均存在 |
@@ -222,7 +226,7 @@ operation_scope由服务端固定为`video:new`、`video:reinterpret`、`task:re
 <a id="spec-06"></a>
 ## 6. PostgreSQL 数据模型
 
-采用 PostgreSQL 17 系列、SQLAlchemy 2.0 系列和 Alembic。所有业务表共享：`id uuid PK`（单例/槽表另有自然键），`created_at/updated_at timestamptz NOT NULL`，`deleted_at timestamptz NULL`，`version bigint NOT NULL DEFAULT 1 CHECK(version>0)`。`version` 是乐观锁，更新用 `WHERE version=:expected` 并加一；任务另有对外单调 `state_revision`，不因心跳递增。不可变证据/版本表禁止更新内容，逻辑删除只改变可见性元数据；历史引用仍可解析。外键默认 `ON DELETE RESTRICT`，删除不物理级联破坏证据。
+采用 PostgreSQL 17 系列、SQLAlchemy 2.0 系列和 Alembic。所有业务表共享：`id uuid PK`（单例/槽表另有自然键），`created_at/updated_at timestamptz NOT NULL`，`deleted_at timestamptz NULL`，`version bigint NOT NULL DEFAULT 1 CHECK(version>0)`。`version` 是乐观锁，更新用 `WHERE version=:expected` 并加一；任务另有对外单调 `state_revision`，不因心跳递增。不可变证据/版本表禁止更新内容，逻辑删除只改变可见性元数据；历史引用仍可解析。外键默认 `ON DELETE RESTRICT`，删除不物理级联破坏证据。共享字段适用于全部表（含单例、槽、Outbox、心跳表）；仅 `admin_sessions`（过期清理、恢复清空）与 `task_events`（保留期清理）允许物理删除，二者无业务历史价值，其余表只做逻辑删除。
 
 以下列出common字段之外的全部核心字段；`?`表示可空，未标可空即NOT NULL。JSON使用`jsonb`，金额/估算使用`numeric(20,8)`，字节和毫秒用`bigint`，计数`integer`。未另标类型的`*_at/*_until`为`timestamptz`，`*_json`为`jsonb`，其余枚举/名称/标识文本为`text`。状态文本带CHECK，迁移集中维护取值。业务唯一性不能因软删除而重用幂等键、分享hash或历史版本身份。
 
@@ -230,7 +234,7 @@ operation_scope由服务端固定为`video:new`、`video:reinterpret`、`task:re
 
 | 表 | 业务字段 | 关系、约束与索引 |
 | --- | --- | --- |
-| `instance_state` | `singleton_key smallint=1, installation_id uuid, instance_epoch uuid, restore_state text, restore_id uuid?, restore_confirmed_at?, restore_audit_json, maintenance_mode text, policy_json, config_revision bigint, last_backup_id uuid?` | singleton_key UNIQUE CHECK=1；maintenance_mode=normal/draining/frozen，restore_state=normal/backup_image/restoring/review_required；epoch 在显式恢复时更新，普通重启不变；接单/维护串行化行 |
+| `instance_state` | `singleton_key smallint=1, installation_id uuid, instance_epoch uuid, restore_state text, restore_id uuid?, restore_confirmed_at?, restore_audit_json, maintenance_mode text, policy_json, config_revision bigint, last_backup_id uuid?, root_key_check bytea` | singleton_key UNIQUE CHECK=1；root_key_check=HMAC(root key,"frameread/key-check")，初始化写入，挂载根密钥的进程（api-admin、worker、control、migrate、CLI）启动比对，不一致拒绝启动，api-public 不挂根密钥也不比对；policy_json 是运行时资源策略唯一来源，经维护 CLI 修改并递增 config_revision；maintenance_mode=normal/draining/frozen，restore_state=normal/backup_image/restoring/review_required；epoch 在显式恢复时更新，普通重启不变；接单/维护串行化行 |
 | `admin_sessions` | `token_hash bytea, csrf_hash bytea, credential_generation text, expires_at, last_seen_at` | hash UNIQUE，expires_at 索引；密码轮换后 generation 不匹配即失效；恢复清空会话 |
 | `provider_configs` | `kind,name,active_revision_id uuid?,credential_ciphertext bytea?,credential_key_id text?,credential_scope_hash char(64)?,credential_generation bigint,is_default bool,disabled bool` | 每kind一个有效默认项的部分唯一索引；有密文则必须有key_id/scope；当前凭据单份密文，不保存旧明文；revision归属由FK/Service核对；配额组固定在具体语义revision |
 | `provider_revisions` | `config_id uuid,revision_no int,adapter text,base_url text,quota_group text,model text?,semantic_json,semantic_hash char(64),capabilities_json,last_check_task_id uuid?` | FK config；UNIQUE(config_id,revision_no)；quota_group/规范base_url索引用于同服务归组；能力检查结果关联任务，固定语义字段不可改；端点不放公开DTO |
@@ -248,7 +252,7 @@ operation_scope由服务端固定为`video:new`、`video:reinterpret`、`task:re
 | `task_events` | `task_id uuid,seq bigint,state_revision bigint,instance_epoch uuid,event_type text,payload_json,occurred_at` | UNIQUE(task_id,seq)；(task_id,seq) 查询；occurred_at 清理索引；只存关键事件，不按事件重建任务 |
 | `stage_results` | `task_id uuid,stage_key text,input_hash char(64),output_hash char(64)?,status text,output_json,produced_fence bigint,reused_from_id uuid?,workflow_version text,prompt_version text,schema_version text,completed_at?` | UNIQUE(task_id,stage_key,input_hash)；FK task/self；完成后内容不可变；同任务 section/round 用独立 stage_key |
 | `provider_calls` | `task_id uuid,attempt_id uuid,stage_result_id uuid?,logical_key text,send_no int,provider_revision_id uuid,quota_group text,operation text,state text,intent_at,send_authorized_at?,call_deadline_at?,response_at?,provider_request_id text?,input_manifest_json,request_hash char(64),response_asset_id uuid?,usage_status text,usage_json?,reservation_json,error_code text?,latency_ms bigint?,retry_class text?,reconciled_from_epoch uuid?` | UNIQUE(task_id,logical_key,send_no)；(task_id,logical_key)、(state,intent_at)、(quota_group,send_authorized_at) 索引；FK 关联确切 receipt asset；unknown 用量 NULL/partial，不能默认 0 |
-| `resource_slots` | `resource_key text,slot_no int,assigned_task_id uuid?,assigned_fence bigint?,owner_token uuid?,lease_until?,slot_state text` | UNIQUE(resource_key,slot_no)；execution 槽在受理时持久保留，处理/Provider 槽短租约；同 task 的槽受 fence 保护 |
+| `resource_slots` | `resource_key text,slot_no int,assigned_task_id uuid?,assigned_fence bigint?,owner_token uuid?,lease_until?,slot_state text` | UNIQUE(resource_key,slot_no)；槽行由迁移与 `policy set` 预建，调小容量时多余槽置 `retired`，占用者运行至结束、释放后不再分配；execution 槽在受理时持久保留，处理/Provider 槽短租约；同 task 的槽受 fence 保护 |
 | `worker_heartbeats` | `worker_id text,instance_epoch uuid,process_generation uuid,last_seen_at,capacity_json,active_count int` | worker_id UNIQUE；last_seen_at 索引；未知不显示为健康 |
 
 `budget_json` 保存受理时上限及版本；预留和已知用量是任务行锁内更新的汇总，调用账为明细。测试重算两者一致；unknown 预留保持占用。不新增独立计费系统。执行槽使用 resource_slots 复用，不再另建容量计数表。
@@ -300,7 +304,7 @@ API 每请求一个独立 `AsyncSession`，控制进程每次扫描一个短 Ses
 
 SQL 死锁/序列化冲突只可在尚无外部副作用的整个短事务上有界重试；幂等身份不变。不可把已发送调用外层整个函数交给数据库重试装饰器。
 
-统一`instance_write_gate`在实例行锁内判定`maintenance_mode='normal' AND restore_state='normal'`，T1新受理、主动重试、新Claim/阶段、T4发送授权、T6正式发布、配置修改及T9创建/重签均调用，不能只检查其中一个normal。幂等找回/只读查询可先执行；会话/读取租约可在review_required下用于管理核对。draining只允许原有效执行者保存已获准调用的T5回执、当前阶段检查点、续租/资源释放和失败/取消收敛，不允许开始新业务副作用；frozen仅维护CLI写入。所有例外仍检查epoch/fence/期限，不能绕过restore门禁。
+统一`instance_write_gate`在实例行锁内判定`maintenance_mode='normal' AND restore_state='normal'`，T1新受理、主动重试、新Claim/阶段、T4发送授权、T6正式发布、配置修改及T9创建/重签均调用，不能只检查其中一个normal。幂等找回/只读查询可先执行；会话/读取租约可在review_required下用于管理核对。draining只允许原有效执行者保存已获准调用的T5回执、当前阶段检查点、续租/资源释放和失败/取消收敛，不允许开始新业务副作用；frozen仅维护CLI写入。所有例外仍检查epoch/fence/期限，不能绕过restore门禁。门禁按操作类别实现为 `gate.require(op)`，另有三类：`dispatch`（Outbox 投递与等待位提升）在 draining/frozen 禁止；`session`（管理员登录/退出）仅 frozen 禁止；`cancel_request`（用户新取消请求）draining 允许、frozen 禁止。
 
 | 事务 | 原子写入与裁决 |
 | --- | --- |
@@ -316,7 +320,7 @@ SQL 死锁/序列化冲突只可在尚无外部副作用的整个短事务上有
 
 ### 7.2 Alembic 与 SQL 验证
 
-初始迁移先创建实例/配置/来源，再创建快照/字幕、任务/槽/事件、资产/阶段/调用、文章/QA/引用、导出/分享。tasks与snapshot、asset与producer、config与active_revision等前向/循环FK在相关表齐备后由同一迁移事务补上，最后创建索引/触发器；迁移完成前不开放业务写入。迁移进程持PG advisory lock，API/Worker只允许兼容的Alembic head，失败阻止相关进程写入。迁移包含CHECK/UNIQUE/FK/部分索引和不可变内容保护触发器；updated_at/version更新规则统一实现。schema变更必须有空库与旧样本升级测试，不以清库解决。
+迁移按切片增量追加 revision，每个切片只创建本片首次需要的表；初始 revision 只含 S0 表。tasks与snapshot、asset与producer、config与active_revision等前向/循环FK在被引用表首次出现的切片 revision 中补上，同一 revision 内先建表、再补FK、最后建索引/触发器。未合入 `main` 的 revision 可在切片分支内修改或合并，合入后只追加不修改，V1 定稿不合并；AT-20 旧样本基线取 S7 head 时的数据。迁移完成前不开放业务写入。迁移进程持PG advisory lock，API/Worker只允许兼容的Alembic head，失败阻止相关进程写入。迁移包含CHECK/UNIQUE/FK/部分索引和不可变内容保护触发器；updated_at/version更新规则统一实现。schema变更必须有空库与旧样本升级测试，不以清库解决。
 
 历史分页使用 `(created_at,id)<(:time,:id)`，版本匹配使用复合索引，证据一次窗口查询，资产引用按 `IN` 批量取。列表行与关联摘要限定为固定数量 SQL，不循环读取每条任务。`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` 只针对可回滚测试环境/代表样本采集，记录行数、扫描、排序、buffers、查询次数和端到端延迟；顺序扫描在小表可以合理，不机械强求索引。每条重要修改同时检查影响行数与最终持久状态。
 
@@ -331,7 +335,7 @@ Redis按进程用途配置独立ACL用户/secret：public-cache仅授权`fr:*:ar
 | --- | --- | --- |
 | Celery 队列 `fr.video/fr.qa/fr.utility` | 只含 task ID、epoch、generation；ACK/visibility 控制投递，不能证明业务完成 | 接单可在 PG 容量内继续；control 退避、PG 记录积压，恢复后受限补投 |
 | `fr:{epoch}:rate:{quota_group}` | Lua 原子 rolling-window ZSET，成员为发送授权 call ID，score 为协调时间；TTL 为窗口+保护时间 | 不可确认时暂停新的受限调用，进入 retry_wait；PG 快照/已发布内容仍可读 |
-| `fr:{epoch}:login:{source_hash}` | 无明文来源的短期失败计数，TTL 有界 | 凭据入口限流不可用时 `503`，不无界接受密码尝试；已有会话读取不依赖此键 |
+| `fr:{epoch}:login:{source_hash}`、`fr:{epoch}:login:global` | 无明文来源的短期失败计数与全局失败计数，TTL 有界 | 凭据入口限流不可用时 `503`，不无界接受密码尝试；已有会话读取不依赖此键 |
 | `fr:{epoch}:article:{version}:{content_hash}:{renderer}` | 正式内容 JSON/安全渲染结果；默认 TTL 1h、单对象≤2MiB，应用总预算默认64MiB | 显式回源 PG/文件并记录 cache_degraded；不缓存授权，默认开关关闭直到实验 |
 
 ### 8.1 配额申请协议
@@ -346,7 +350,7 @@ Provider 槽在 HTTP 完成/明确失败时释放；失联只在本地调用 dea
 
 `deadline_at = accepted_at + total_timeout` 永不因重投/自动重试重置。每个阶段/HTTP/子进程 timeout 取自身上限与剩余期限的较小值，资源等待也受同一期限约束。control 对未领取/等待任务执行 deadline 扫描。初始配置示例为 video 总期限 2h、单次模型120s、媒体阶段20min、lease 60s/heartbeat10s；均为待测起点，不能称性能承诺。
 
-下载前检查声明大小，流式累计实际字节并监控目录占用；FFmpeg 限进程数、输出字节和运行时间，文件系统保留最低空闲阈值。Docker 卷通常没有可移植的 per-directory 硬配额，所以需监控实际工作区和容器资源，超限立即停止子进程组并清理非保留临时产物。达到磁盘安全线暂停新媒体受理/处理并报告，不能继续创建无界工作。已发布数据不会因腾空间被自动删除。
+下载前检查声明大小，流式累计实际字节并监控目录占用；FFmpeg 限进程数、输出字节和运行时间，文件系统保留最低空闲阈值。Docker 卷通常没有可移植的 per-directory 硬配额，所以需监控实际工作区和容器资源，超限立即停止子进程组并清理非保留临时产物。达到磁盘安全线暂停新媒体受理/处理并报告（T1 在实例锁内读取 control 采样，超线或采样过期返回 `503 DEPENDENCY_UNAVAILABLE`，details code `disk_low`），不能继续创建无界工作。已发布数据不会因腾空间被自动删除。
 
 <a id="spec-09"></a>
 ## 9. 受理、Outbox、投递与领取
@@ -666,7 +670,7 @@ manifest 保存 version/content_hash/renderer/files hash-size。打包前后校�
 
 部署前通过 CLI 从交互式 stdin 设置单一管理员密码的 Argon2id hash，保存在 Docker secret 文件；没有默认密码、注册 API 或用户记录。启动要求 `ADMIN_PASSWORD_HASH_FILE` 与实例根密钥文件存在，缺失快速失败。凭据只验证本实例管理员，不加角色/权限管理界面。
 
-`POST /api/v1/admin/session` 校验配置的精确 Origin、Host、JSON Content-Type 与登录限流，验证密码后生成32字节 CSPRNG session token，PG 存 hash、绝对过期时间（默认12h）和 credential_generation。响应设置 `frameread_admin` HttpOnly、SameSite=Strict、Path=/api/v1/admin cookie；HTTPS 必须 Secure，默认 loopback HTTP 模式显式不设 Secure。非 loopback 管理 Origin 只允许 HTTPS，不信任请求头声称安全。密码不进入 URL、日志或浏览器 localStorage。
+`POST /api/v1/admin/session` 校验 `ADMIN_ORIGINS` 精确列表中的 Origin、Host、JSON Content-Type 与登录限流，验证密码后生成32字节 CSPRNG session token，PG 存 hash、绝对过期时间（默认12h）和 credential_generation。响应设置 `frameread_admin` HttpOnly、SameSite=Strict、Path=/api/v1/admin cookie；HTTPS 必须 Secure，默认 loopback HTTP 模式显式不设 Secure。非 loopback 管理 Origin 只允许 HTTPS，不信任请求头声称安全。密码不进入 URL、日志或浏览器 localStorage。
 
 CSRF token 以独立派生 key 对 session token 做 HMAC，PG 保存其 hash；`GET /session` 在已认证请求中返回相同 CSRF token，前端只存内存，管理写请求带 `X-CSRF-Token`。退出逻辑撤销会话、清 cookie。密码 hash 文件变化使 credential_generation 变化，既有会话失效。恢复清空会话，管理员重新验证凭据。
 
@@ -693,7 +697,7 @@ yt-dlp 固定使用 media proxy；WebReader 跟随每次重定向前重复校验
 <a id="spec-18"></a>
 ## 18. SSE、快照、关键事件与重连
 
-PG task当前行、固定result、阶段与关键事件为权威。critical event仅保存accepted、claim/重要阶段完成、retry_wait、cancel_requested、终态、published/answered等持久事实；临时百分比、心跳和token进度不需要逐条持久化。更新关键状态时在同一task行锁事务内state_revision++、event_seq++并插event；普通心跳不修改对外revision。最新临时进度可节流写progress_json，带observed_at并递增state_revision，但不增加event_seq或永久进度事件；若SSE发progress通知，只发送已有持久revision的最新进度，重连直接用快照覆盖，不能让旧百分比倒灌。
+PG task当前行、固定result、阶段与关键事件为权威。critical event仅保存accepted、claim/重要阶段完成、失联重排（requeued）、retry_wait、cancel_requested、终态、published/answered等持久事实；临时百分比、心跳和token进度不需要逐条持久化。更新关键状态时在同一task行锁事务内state_revision++、event_seq++并插event；普通心跳不修改对外revision。最新临时进度可节流写progress_json，带observed_at并递增state_revision，但不增加event_seq或永久进度事件；若SSE发progress通知，只发送已有持久revision的最新进度，重连直接用快照覆盖，不能让旧百分比倒灌。
 
 ### 18.1 快照与订阅协议
 
@@ -741,7 +745,7 @@ critical event retention 默认7天，可按前缀批量清理，最后一次终
 | `api-admin` | 内网8000，不直接 publish | 私有DB凭据、root secret只读；对象卷读写受 Service约束 |
 | `api-public` | 内网8001，不直接 publish | public DB role与public-cache Redis ACL，仅对象卷只读；不挂配置解密/管理员/Broker凭据 |
 | `worker` | 无入站公开端口，Celery prefork | PG、Redis、root secret，对象/工作卷；FFmpeg/ffprobe/yt-dlp及固定Deno/yt-dlp-ejs依赖 |
-| `control` | 无公开端口 | DB扫描、Outbox投递、恢复、GC、retention、心跳；可多实例但按行锁/lease去重 |
+| `control` | 无公开端口 | DB扫描、Outbox投递、恢复、GC、retention（含过期管理会话清理）、心跳；可多实例但按行锁/lease去重 |
 | `migrate` | one-shot | DDL专用DB role，完成后退出；其他写服务检查兼容head |
 | `egress-proxy` | 仅内部两监听 media/web | 无DB、密钥和数据卷；公网目标校验与有界CONNECT转发 |
 | `postgres` | 仅内部5432 | `pgdata` 卷，正式权威状态；不暴露宿主默认端口 |
@@ -749,7 +753,7 @@ critical event retention 默认7天，可按前缀批量清理，最后一次终
 
 yt-dlp 的 YouTube 支持需在镜像固定安装匹配的 yt-dlp-ejs 与 Deno，禁止处理任务时动态下载组件，参见[官方依赖说明](https://github.com/yt-dlp/yt-dlp#dependencies)。锁定工具版本与处理策略进入 acquisition fingerprint，升级后用固定双平台样本回归。
 
-配置按 `settings.toml` 的非敏感策略 + Docker secrets 的凭据入口组织，Pydantic Settings 启动校验。例：`DATABASE_DSN_FILE`、`PUBLIC_DATABASE_DSN_FILE`、`REDIS_URL_FILE`、`MASTER_KEY_FILE`、`ADMIN_PASSWORD_HASH_FILE` 只保存文件路径；`ADMIN_ORIGIN`、`SHARE_BASE_URL`、队列/并发/预算/TTL/磁盘阈值可通过非敏感配置提供。文件内包含的连接字符串与密钥不得回显；配置示例不含实值凭据，本地 `.env*` 不提交。主密钥派生独立 encryption/session-csrf/cursor/share 子key，public app不需要这些子key，只校验 token_hash/epoch。
+配置按 `settings.toml` 的非敏感策略 + Docker secrets 的凭据入口组织，Pydantic Settings 启动校验。例：`DATABASE_DSN_FILE`、`PUBLIC_DATABASE_DSN_FILE`、`REDIS_URL_FILE`、`MASTER_KEY_FILE`、`ADMIN_PASSWORD_HASH_FILE` 只保存文件路径；`ADMIN_ORIGINS`（精确列表）、`SHARE_BASE_URL`、SSE 参数等进程启动配置在 `settings.toml` 中提供；队列/并发/预算/TTL/磁盘阈值等资源策略也可在其中提供初始值，仅在空库初始化时写入 `instance_state.policy_json`；运行时以 PG 为准，修改用 `frameread policy set`，与 `settings.toml` 不一致只记 warning。`frameread maintenance set normal|draining|frozen` 用于停写升级。文件内包含的连接字符串与密钥不得回显；配置示例不含实值凭据，本地 `.env*` 不提交。主密钥派生独立 encryption/session-csrf/cursor/share 子key，public app不需要这些子key，只校验 token_hash/epoch。
 
 新实例初始化明确创建 PG roles和随机根密钥、管理员密码hash，再迁移、检查工具/可写目录和依赖就绪，才启动 API/Worker/control。已有数据而根密钥缺失时启动失败，不能生成新密钥覆盖。compose health依赖仅为就绪条件之一，服务仍主动重连并校验migration，不能固定sleep判断可用。服务以非root运行、只读根文件系统、限制CPU/内存/pids、精确挂载可写目录，不挂Docker socket。
 

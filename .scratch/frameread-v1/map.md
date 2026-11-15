@@ -261,6 +261,8 @@ L0 底座      M01 实例门禁与平台底座
 
 无循环依赖。新增依赖需在本表登记，出现环时先在对应模块 Grill 中解决。
 
+进程入口组合（不构成模块依赖）：migrate 与 `frameread policy set` 的入口在同一 UoW 内先调用 M01 写入策略，再调用 M03 `sync_execution_slots` 预建或 retire 执行槽。
+
 ### 4.3 进程承载
 
 | 进程 | 承载的模块职责 |
@@ -372,10 +374,10 @@ L0 底座      M01 实例门禁与平台底座
 
 | 模块 | 批次 | Grill | 模块 SPEC | 备注 |
 | --- | --- | --- | --- | --- |
-| M01 | A | 未开始 | — | |
-| M02 | A | 未开始 | — | |
-| M03 | A | 未开始 | — | |
-| M04 | A | 未开始 | — | |
+| M01 | A | 已对齐（2026-11-15） | 已确认（2026-11-15）`.scratch/m01-instance-platform/spec.md` | 结论已回写 SPEC §4.1、§6.1、§7.2、§19 |
+| M02 | A | 已对齐（2026-11-15） | 已确认（2026-11-15）`.scratch/m02-admin-access/spec.md` | 会话表物理清理为逻辑删除例外 |
+| M03 | A | 已对齐（2026-11-15） | 已确认（2026-11-15）`.scratch/m03-task-runtime/spec.md` | 槽 retired 规则已回写 SPEC §6.2 |
+| M04 | A | 已对齐（2026-11-15） | 已确认（2026-11-15）`.scratch/m04-task-sync/spec.md` | 含前端底座选型 |
 | M05 | B | 未开始 | — | |
 | M06 | B | 未开始 | — | |
 | M07 | B | 未开始 | — | |
@@ -383,7 +385,7 @@ L0 底座      M01 实例门禁与平台底座
 | M09 | B | 未开始 | — | |
 | M10 | B | 未开始 | — | |
 | M11 | B | 未开始 | — | |
-| M12 | A，B 末复核 | 未开始 | — | |
+| M12 | A，B 末复核 | 已对齐（2026-11-15，S0 范围） | 已确认（2026-11-15）`.scratch/m12-video-usecase/spec.md` | 流水线下游接口待 B 末复核 |
 | M13 | D | 未开始 | — | |
 | M14 | D | 未开始 | — | |
 | M15 | D | 未开始 | — | |
@@ -395,7 +397,7 @@ L0 底座      M01 实例门禁与平台底座
 
 | 切片 | 新增所需模块 SPEC（另含全部前序切片所需） | Ticket 目录 | Ticket 完成/总数 | AT 证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 0/0 | — | 未开始 |
+| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 0/10 | — | Ticket 已拆分 |
 | S1 | M05、M06、M07、M08、M09、M10、M11，M12 复核 | `.scratch/s1-subtitle-article/` | 0/0 | — | 未开始 |
 | S2 | — | `.scratch/s2-platforms-asr/` | 0/0 | — | 未开始 |
 | S3 | — | `.scratch/s3-request-behaviors/` | 0/0 | — | 未开始 |
@@ -417,16 +419,16 @@ L0 底座      M01 实例门禁与平台底座
 
 ### 10.4 当前可执行
 
-- 下一步：M01 Grill，等待用户调用 `/grill-with-docs`。
-- 进入 S0 实现前：基线文档尚未提交（PRD、ADR 0001 等有未提交修改，SPEC_V1、GLOSSARY、追踪矩阵等未跟踪），建议经用户授权先提交 `docs:` 基线 commit，S0 使用独立分支。
+- 批次 A 五个模块 Grill 已对齐，逐条决定见 [grill-batch-a.md](grill-batch-a.md)。五份模块 SPEC 已确认，SPEC 待确认事项的裁决见 [spec-resolutions-batch-a.md](spec-resolutions-batch-a.md)。S0 已拆为 10 个 Ticket（`.scratch/s0-local-admission/issues/`）。下一步：从 01 开始实现；05、09 在 03 后、07、08 在 06 后可并行。
+- S0 在分支 `feat/s0-local-admission` 上进行；基线文档已提交于 `b7674bb`。
 
 ## 11. 待模块 Grill 解决的问题
 
 | # | 问题 | 归属 |
 | --- | --- | --- |
-| 1 | b23.tv 短链需联网解析，而匹配和 T1 在 API 同步执行：解析位置、超时与失败分类 | M09、M12 |
-| 2 | 磁盘安全线“暂停新媒体受理”如何接入 T1 判定 | M12、M09、M03 |
-| 3 | S0 受控测试流水线如何只在测试环境启用，且不冒充真实文章 | M03、M12 |
+| 1 | b23.tv 短链（已解决）：API 不联网，按规范化短链受理，Worker 在 acquire 经 M09/media proxy 解析并填 source_id；匹配返回 `match:null, reason=short_link_unresolved`。M09 Grill 定解析超时与失败分类 | M09、M12 |
+| 2 | 磁盘安全线（部分解决）：T1 在实例锁内读 control 采样结果，超线或采样过期均 `503 DEPENDENCY_UNAVAILABLE(disk_low)`，S1 实现；采样字段归属待 M09 Grill | M12、M09、M03 |
+| 3 | S0 受控流水线（已解决）：video KindHandler 骨架只写 acquire 阶段并协作等待，只能 canceled 或 deadline 时 failed（`PIPELINE_NOT_AVAILABLE`），不写文章表；S1 删除骨架，不留开关 | M03、M12 |
 | 4 | 版本历史 `GET /articles` 的列表维度（按来源、匹配或全部） | M10 |
-| 5 | `/tasks/{id}/retries` 对 export/probe 任务的行为 | M12、M14、M08 |
-| 6 | SPEC §7.2 的“初始迁移”按全部表描述，而各表在不同切片首次出现：V1 定稿前采用增量 revision 还是在某节点合并，以及 AT-20 旧样本升级的基线 | M01 |
+| 5 | `/tasks/{id}/retries` 对 export/probe（已解决）：仅接受 video，其他 kind 返回 `409 INVALID_TRANSITION`，S3 实现 | M12、M14、M08 |
+| 6 | 迁移策略与 AT-20 基线（已解决）：按切片增量 revision，合入 `main` 后只追加，基线取 S7 head，见 SPEC §7.2 | M01 |
