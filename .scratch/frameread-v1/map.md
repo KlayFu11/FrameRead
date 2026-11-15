@@ -397,7 +397,7 @@ L0 底座      M01 实例门禁与平台底座
 
 | 切片 | 新增所需模块 SPEC（另含全部前序切片所需） | Ticket 目录 | Ticket 完成/总数 | AT 证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 0/10 | — | Ticket 已拆分 |
+| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 0/10（01 claimed，待远端 CI） | `docs/validation/s0/` | 进行中 |
 | S1 | M05、M06、M07、M08、M09、M10、M11，M12 复核 | `.scratch/s1-subtitle-article/` | 0/0 | — | 未开始 |
 | S2 | — | `.scratch/s2-platforms-asr/` | 0/0 | — | 未开始 |
 | S3 | — | `.scratch/s3-request-behaviors/` | 0/0 | — | 未开始 |

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **依据：** [M01 SPEC](../../m01-instance-platform/spec.md) 实现决定 3.1～3.9、测试决定 1、3～10、13～17、19、20；X1 的 S0 部分。REQ-11、REQ-13、REQ-14；AT-20 空库迁移、AT-21、AT-22 S0 子集（R10）。
 
@@ -24,3 +24,18 @@
 - [ ] GitHub Actions：锁文件一致性、迁移、后端单测与真实 PG/Redis 集成测试；测试夹具按模板库建独立库、每测 TRUNCATE（D38）
 - [ ] `deploy/README.md` 写明以上启动命令
 - [ ] 迁移失败测试：复制迁移目录追加失败 revision 运行，服务不启动、数据未被清空（E9）
+
+## Answer
+
+- **Commit**：`364faf1`（分支 `feat/s0-local-admission`）。
+- **运行的检查**：`uv lock --check`、`ruff check`、`ruff format --check`、`mypy`（strict）均通过；`uv run pytest -q`（真实 PostgreSQL 17 与 Redis 7.4）176 passed，无 skip。
+- **实际部署**：在新数据卷上按 `deploy/README.md` 执行 `secrets init → build → run --rm migrate → up -d --wait`，6 个服务就绪，`scripts/check_compose_s0.sh` 输出 OK；分别停止 Redis 与 PostgreSQL，ready 依次为 `200 degraded`、`503 unavailable`，依赖恢复后自动回到 ready。
+- **证据**：[docs/validation/s0/01-platform-skeleton.md](../../../docs/validation/s0/01-platform-skeleton.md)。
+- **未完成**（因此保持 `claimed`）：
+  - GitHub Actions 尚未在远端运行，需要推送，推送须用户授权。
+  - “健康检查无出站请求”只有结构性证据（internal 网络），未做网络层观测。
+- **审查后的偏离说明**：
+  - qa/utility 池与 SPEC §8.2、§9.3 其余策略键随首个使用它们的 Ticket 加入。
+  - 连接池大小保持常量，与 U3 的预算公式一致。
+  - 测试隔离使用“模板库复制独立库”，替代“共用库每测 TRUNCATE”，隔离程度更强（D38 目标不变）。
+  - migrate 这一一次性工具使用 `depends_on: service_healthy`，常驻服务仍自行重连。
