@@ -9,3 +9,6 @@ reference-project
 docs
 .scratch
 .git
+.worktrees
+.claude
+**/.env*
