@@ -42,7 +42,7 @@
 docker compose -f deploy/compose.yaml exec api-admin python -c "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8000/health/ready'); sys.stdout.write(r.read().decode())"
 ```
 
-`ready` 与 `degraded` 返回 200，`unavailable` 与 `unknown` 返回 503。worker 与 control 没有 HTTP 端口，由轻量入口 `frameread-live --name worker|control` 检查 tmpfs 心跳文件判断存活。
+`ready` 与 `degraded` 返回 200，`unavailable` 与 `unknown` 返回 503。worker 与 control 没有 HTTP 端口，由轻量入口 `frameread health live --name worker|control` 检查 tmpfs 心跳文件判断存活；原 `frameread-live` 入口继续兼容。
 
 ## 升级与故障
 

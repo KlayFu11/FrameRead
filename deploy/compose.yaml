@@ -129,7 +129,7 @@ services:
     command: ["frameread", "worker", "run"]
     secrets: [master_key, database_dsn_app, redis_url]
     healthcheck:
-      test: ["CMD", "frameread-live", "--name", "worker"]
+      test: ["CMD", "frameread", "health", "live", "--name", "worker"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -143,7 +143,7 @@ services:
     command: ["frameread", "control", "run"]
     secrets: [master_key, database_dsn_app, redis_url]
     healthcheck:
-      test: ["CMD", "frameread-live", "--name", "control"]
+      test: ["CMD", "frameread", "health", "live", "--name", "control"]
       interval: 10s
       timeout: 3s
       retries: 3

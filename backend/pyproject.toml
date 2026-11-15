@@ -60,5 +60,5 @@ packages = ["frameread"]
 mypy_path = "src"
 
 [project.scripts]
-frameread = "frameread.cli.main:run"
+frameread = "frameread.cli.entrypoint:run"
 frameread-live = "frameread.observability.liveness:main"

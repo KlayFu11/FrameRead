@@ -28,8 +28,8 @@ def is_live(directory: Path, name: str, max_age_seconds: float) -> bool:
     return time.time() - mtime <= max_age_seconds
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="frameread-live", description="检查 worker/control 心跳文件")
+def main(argv: list[str] | None = None, *, prog: str = "frameread-live") -> int:
+    parser = argparse.ArgumentParser(prog=prog, description="检查 worker/control 心跳文件")
     parser.add_argument("--name", required=True, choices=["worker", "control"])
     parser.add_argument("--max-age", type=float, default=30.0)
     args = parser.parse_args(argv)
