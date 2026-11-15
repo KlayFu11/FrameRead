@@ -1,6 +1,7 @@
 # Local editor and agent history
 .history/
 .workbuddy/
+.worktrees/
 
 # Local reference source
 /reference-project/
