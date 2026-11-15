@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sysconfig
 import time
 from pathlib import Path
 
@@ -10,6 +12,21 @@ from frameread.cli.main import app
 from frameread.observability.liveness import HEARTBEAT_DIR_ENV, main, touch_heartbeat
 
 runner = CliRunner()
+
+
+def test_installed_health_live_checks_heartbeat_within_container_timeout(heartbeat_dir):
+    executable = Path(sysconfig.get_path("scripts")) / ("frameread.exe" if os.name == "nt" else "frameread")
+    # 可执行文件来自当前解释器的安装目录，参数均为测试常量，不执行 shell。
+    command = [str(executable), "health", "live", "--name", "worker"]
+    missing = subprocess.run(command, capture_output=True, timeout=3, check=False)  # noqa: S603
+    assert missing.returncode == 1, missing.stderr.decode()
+    touch_heartbeat(heartbeat_dir, "worker")
+    live = subprocess.run(command, capture_output=True, timeout=3, check=False)  # noqa: S603
+    assert live.returncode == 0, live.stderr.decode()
+    old = time.time() - 120
+    os.utime(heartbeat_dir / "worker.alive", (old, old))
+    stale = subprocess.run(command, capture_output=True, timeout=3, check=False)  # noqa: S603
+    assert stale.returncode == 1, stale.stderr.decode()
 
 
 @pytest.fixture
