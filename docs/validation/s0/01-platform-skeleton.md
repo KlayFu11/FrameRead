@@ -11,7 +11,7 @@
 
 ## 自动化测试
 
-命令：在 `backend/` 下设置 `FRAMEREAD_TEST_PG_URL` 与 `FRAMEREAD_TEST_REDIS_URL` 后执行 `uv run pytest -q`。结果：176 passed，无 skip、无 xfail。逐条用例见 [01-pytest.txt](01-pytest.txt)。
+命令：在 `backend/` 下设置 `FRAMEREAD_TEST_PG_URL` 与 `FRAMEREAD_TEST_REDIS_URL` 后执行 `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider`。收尾实现 `431aa59` 的结果：177 passed，无 skip、无 xfail。[01-pytest.txt](01-pytest.txt) 保留初始实现的 176 passed 输出，不包含本次新增的 installed CLI 用例。
 
 另有 `uv lock --check`、`ruff check`、`ruff format --check` 与 `mypy --strict`，均已通过。
 
@@ -44,8 +44,28 @@
 | 停止 PostgreSQL | 200 | 503 unavailable | postgres、head、root_key 分项均为 `connection_failed` |
 | 恢复依赖 | 200 | 200 ready | 进程未重启 |
 
-## 未完成的验证
+## Ticket 01 收尾验证
 
-- GitHub Actions（`.github/workflows/ci.yml`）尚未在远端运行，需要推送后才能执行。
-- “健康检查期间无出站请求”目前只有结构性证据：api-admin 只接入 `internal: true` 网络，健康探针只访问 PG 与 Redis。还没有在网络层直接观测。
+- 完成准确入口 `frameread health live --name worker|control`；入口在加载 Typer、FastAPI 与 SQLAlchemy 前分发至标准库检查，`frameread-live` 继续兼容，Compose 使用准确入口。
+- TDD：新增 installed CLI 测试先在原实现上以 3s 超时失败；实现后，缺失、有效、过期心跳三个退出码均正确。完整测试在真实 PostgreSQL/Redis 上为 **177 passed**，命令为 `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider`（工作目录 `backend/`）。现有 FastAPI/Starlette 弃用提示 1 条，不影响结果。
+- 本地 CI 等价检查：`uv lock --check`、`ruff check src tests`、`ruff format --check src tests`、`mypy`（strict）全部通过；独立镜像 `docker build -f deploy/Dockerfile.backend -t frameread-ticket01:local .` 构建成功。
+
+### 运行时网络观测
+
+脚本：[observe_health_network.py](../../../scripts/observe_health_network.py)。使用独立验收容器，运行新构建的镜像并连接现有真实 PostgreSQL/Redis；保持生产配置与密钥只读挂载，不替换运行中的服务。验收容器额外连接 `frameread_edge` 网络，具有可用的外部默认路由，避免仅靠“没有网络”得出结论。`frameread_internal` 用于依赖连接。
+
+在容器中执行 `python /validation/observe_health_network.py`（将仓库 `scripts/` 只读挂载到 `/validation`）。脚本从 `/proc/net/route` 定位外部默认路由接口，从 `/sys/class/net/<interface>/statistics/tx_*` 读取 Linux 接口计数。先确认 ready 成功，再调用 HTTP live/ready 各 12 次，同时调用已安装的 `frameread health live` 共 24 次；观察窗口跨越至少两个 5s 探针缓存周期。完成健康调用后，单独向 Docker 本地网关发送一个 UDP 对照包，确认计数器能检出流量。
+
+实际结果（不含凭据）：
+
+```json
+{"method":"Linux interface TX counters (not packet capture)","interface":"eth0","requests":{"live":12,"ready":12},"installed_cli_calls":24,"installed_cli_max_seconds":0.369,"observation_seconds":20.68,"health_tx_packets":0,"health_tx_bytes":0,"positive_control_tx_packets":1}
+```
+
+这证明本次成功健康检查的观察窗口中，外部接口没有发送网络流量；PG/Redis 的内部连接仍正常。它不是抓包，不包含包内容，也不声称覆盖未来新增探针或所有故障组合。原有 internal-only 生产网络继续提供结构隔离。完成后移除本次创建的独立验收容器。
+
+## 验证限制与后续归属
+
+- GitHub Actions（`.github/workflows/ci.yml`）工作流已实现，本地等价检查通过；远端执行未验证，当前任务不执行 push。
+- 宿主为 Windows Docker Desktop，Linux 容器内检查不等同于 Linux 宿主部署验证。
 - Worker 心跳探针 `worker_heartbeats` 归 M03（Ticket 06）；停止 Worker 后 ready 出现 degraded 分项的验证随 Ticket 06 进行。
