@@ -39,3 +39,4 @@
   - 连接池大小保持常量，与 U3 的预算公式一致。
   - 测试隔离使用“模板库复制独立库”，替代“共用库每测 TRUNCATE”，隔离程度更强（D38 目标不变）。
   - migrate 这一一次性工具使用 `depends_on: service_healthy`，常驻服务仍自行重连。
+  - worker/control 的 live 入口是独立的 `frameread-live`（只依赖标准库），不是 `frameread health live`：完整 CLI 在容器内导入约 5.7s、单次执行约 10s，超过 Compose 健康检查的 3s 超时。M01 SPEC §3.6 条 48 的语义（CLI 检查 tmpfs 心跳文件）不变。
