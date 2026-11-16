@@ -1,0 +1,12 @@
+- banner:
+  - link "FrameRead":
+    - /url: /manage/
+  - text: 个人视频理解工作台
+- main:
+  - region "管理入口已就绪":
+    - text: 已登录
+    - heading "管理入口已就绪" [level=1]
+    - paragraph: 当前管理会话有效。
+    - paragraph: 会话到期时间：2026/11/16 21:46:28
+    - button "退出登录"
+- contentinfo: FrameRead
