@@ -113,7 +113,12 @@ services:
       - --no-server-header
       # uvicorn 访问日志含完整 URL 与 query，不经字段 allowlist（SPEC §20）
       - --no-access-log
-    secrets: [master_key, database_dsn_app, redis_url]
+      - --proxy-headers
+      - --forwarded-allow-ips=172.28.0.10
+    environment:
+      <<: *backend-env
+      ADMIN_PASSWORD_HASH_FILE: /run/secrets/admin_password_hash
+    secrets: [master_key, database_dsn_app, redis_url, admin_password_hash]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
       interval: 10s
@@ -154,16 +159,23 @@ services:
 
   gateway:
     <<: *hardening
-    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    image: frameread-gateway:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.gateway
     user: "101:101"
     command: ["nginx", "-c", "/etc/frameread/nginx.conf", "-g", "daemon off;"]
-    volumes:
-      - ./gateway/nginx.conf:/etc/frameread/nginx.conf:ro
+    depends_on:
+      api-admin:
+        condition: service_started
     tmpfs:
       - /tmp
     ports:
       - "127.0.0.1:8080:8080"
-    networks: [internal, edge]
+    networks:
+      internal:
+        ipv4_address: 172.28.0.10
+      edge: {}
     cpus: 0.5
     mem_limit: 128m
     pids_limit: 64
@@ -171,6 +183,9 @@ services:
 networks:
   internal:
     internal: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
   edge: {}
 
 volumes:
@@ -178,6 +193,8 @@ volumes:
   redisdata: {}
 
 secrets:
+  admin_password_hash:
+    file: ./secrets/admin_password_hash
   master_key:
     file: ./secrets/master_key
   pg_superuser_password:

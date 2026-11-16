@@ -5,6 +5,7 @@ description = "FrameRead 后端：视频解读任务的受理、执行与正式�
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14",
+    "argon2-cffi>=23.1",
     "cryptography>=44",
     "fastapi>=0.115",
     "psycopg[binary]>=3.2",

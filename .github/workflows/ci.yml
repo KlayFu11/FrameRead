@@ -46,9 +46,24 @@ jobs:
         run: uv run pytest -q
       - name: OpenAPI 契约导出可重复
         run: |
-          uv run frameread openapi export --out /tmp/a.json
+          uv run frameread openapi export --out openapi/admin.json
           uv run frameread openapi export --out /tmp/b.json
-          cmp /tmp/a.json /tmp/b.json
+          cmp openapi/admin.json /tmp/b.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - name: 前端依赖、类型生成与验证
+        working-directory: frontend
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm generate:api
+          pnpm typecheck
+          pnpm test
+          pnpm build
+      - name: 已提交契约与生成类型保持新鲜
+        working-directory: .
+        run: git diff --exit-code -- backend/openapi frontend/src/gen
 
   compose:
     runs-on: ubuntu-24.04
@@ -59,7 +74,10 @@ jobs:
           version: "0.10.9"
       - name: 生成密钥
         working-directory: backend
-        run: uv sync --frozen && uv run frameread secrets init --dir ../deploy/secrets
+        run: |
+          uv sync --frozen
+          uv run frameread secrets init --dir ../deploy/secrets
+          uv run python -c 'import secrets; password=secrets.token_urlsafe(32); print(password); print(password)' | uv run frameread admin set-password --out ../deploy/secrets/admin_password_hash
       - name: 构建与迁移
         run: |
           docker compose -f deploy/compose.yaml build
