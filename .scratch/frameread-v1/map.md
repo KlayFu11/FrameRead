@@ -397,7 +397,7 @@ L0 底座      M01 实例门禁与平台底座
 
 | 切片 | 新增所需模块 SPEC（另含全部前序切片所需） | Ticket 目录 | Ticket 完成/总数 | AT 证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 1/10（01 resolved，02 实施中） | `docs/validation/s0/01-platform-skeleton.md` | 进行中 |
+| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 2/10（01、02 resolved，03 实施中） | `docs/validation/s0/01-platform-skeleton.md`、`docs/validation/s0-ticket02/02-admin-login-shell.md` | 进行中 |
 | S1 | M05、M06、M07、M08、M09、M10、M11，M12 复核 | `.scratch/s1-subtitle-article/` | 0/0 | — | 未开始 |
 | S2 | — | `.scratch/s2-platforms-asr/` | 0/0 | — | 未开始 |
 | S3 | — | `.scratch/s3-request-behaviors/` | 0/0 | — | 未开始 |
@@ -419,7 +419,7 @@ L0 底座      M01 实例门禁与平台底座
 
 ### 10.4 当前可执行
 
-- 批次 A 五个模块 Grill 已对齐，逐条决定见 [grill-batch-a.md](grill-batch-a.md)。五份模块 SPEC 已确认，SPEC 待确认事项的裁决见 [spec-resolutions-batch-a.md](spec-resolutions-batch-a.md)。S0 已拆为 10 个 Ticket（`.scratch/s0-local-admission/issues/`）。01 已合入 `4ffa24f`，02 正在独立 worktree 实施；后续 04、05、09 在 03 后、07、08 在 06 后可并行。执行记录见 [S0 实施计划](../s0-local-admission/task_plan.md)。
+- 批次 A 五个模块 Grill 已对齐，逐条决定见 [grill-batch-a.md](grill-batch-a.md)。五份模块 SPEC 已确认，SPEC 待确认事项的裁决见 [spec-resolutions-batch-a.md](spec-resolutions-batch-a.md)。S0 已拆为 10 个 Ticket（`.scratch/s0-local-admission/issues/`）。01 已合入 `4ffa24f`，02 已合入 `0eddb23`，03 正在独立 worktree 实施；后续 04、05、09 在 03 后、07、08 在 06 后可并行。执行记录见 [S0 实施计划](../s0-local-admission/task_plan.md)。
 - S0 在分支 `feat/s0-local-admission` 上进行；基线文档已提交于 `b7674bb`。
 
 ## 11. 待模块 Grill 解决的问题
