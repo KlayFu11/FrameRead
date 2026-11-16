@@ -51,6 +51,22 @@ docker compose -f deploy/compose.yaml up -d --force-recreate api-admin
 
 CLI 原子替换 hash 文件后，重新创建 api-admin 会重新挂载 secret 并读取新 hash，既有会话随 `credential_generation` 变化而失效。gateway 通过 Docker DNS 自动重新解析 API 地址，无需同步重启；地址变化时可能短暂不可用，实测见 [Ticket03 验证记录](../docs/validation/s0-ticket03/03-video-admission.md#容器与-gateway-回归)。密码写入文件本身不改变已运行进程的凭据。
 
+## 运行策略与维护模式
+
+策略与维护命令使用应用 DML 角色，启动时校验 `MASTER_KEY_FILE` 与 migration head，并在实例行锁内写入 PostgreSQL。通过已运行的 `api-admin` 容器执行，不需要把 DSN 或密钥写入命令参数：
+
+```sh
+docker compose -f deploy/compose.yaml exec api-admin frameread policy set \
+  --video-execution-slots 2 --video-waiting-slots 4
+docker compose -f deploy/compose.yaml exec api-admin frameread maintenance set draining
+docker compose -f deploy/compose.yaml exec api-admin frameread maintenance set frozen
+docker compose -f deploy/compose.yaml exec api-admin frameread maintenance set normal
+```
+
+`policy set` 支持 `--pool video|qa|utility`、执行槽、等待位、期限、租约、心跳、dispatcher 批量、投递重试预算、generation 上限和事件保留天数等选项。Pydantic 校验失败退出码为 `2`，业务拒绝或数据库不可用退出码为 `1`；错误输出包含 `request_id`。成功更新会递增 `config_revision`，并在同一事务同步执行槽。缩容会将多余槽标为 `retired`，不会打断占用者，任务释放后该槽也不会重新分配。
+
+维护状态为 `draining` 或 `frozen` 时，新视频提交返回 `503 MAINTENANCE`；已受理任务仍可按原操作标识找回和读取。只有 `restore_state=normal` 时才允许切回 `normal`。修改 `settings.toml` 的策略不会覆盖运行中的 `policy_json`，进程启动时只记录 `policy_differs_from_settings` warning。
+
 ## 网关、来源与本地调试
 
 gateway 在 `internal` 网络固定为 `172.28.0.10`（子网 `172.28.0.0/24`），uvicorn 只信任该地址的代理信息；修改子网时须同步更新 gateway IP 与 `--forwarded-allow-ips`。nginx 用 `$remote_addr` 覆盖 `X-Forwarded-For`，并移除 `X-Forwarded-Host`、`X-Forwarded-Proto` 与 `Forwarded`，Host 原样传给管理 API。授权只依赖应用对 Host 与 Origin 的精确校验。

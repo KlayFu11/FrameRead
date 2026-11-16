@@ -1,10 +1,35 @@
+import uuid
+from typing import Any
+
 import typer
+from typer import _click
+from typer.core import TyperGroup
 
-from frameread.cli import admin, secrets, services
+from frameread.cli import admin, maintenance, policy, secrets, services
 
-app = typer.Typer(no_args_is_help=True, help="FrameRead 维护命令")
+
+class RequestIdTyperGroup(TyperGroup):
+    """为 Click/Typer 解析阶段的用法错误补充统一 request_id。"""
+
+    def main(self, *args: Any, standalone_mode: bool = True, **kwargs: Any) -> Any:
+        kwargs["standalone_mode"] = False
+        try:
+            result = super().main(*args, **kwargs)
+        except _click.ClickException as exc:
+            typer.echo(f"{exc.format_message()}，request_id={uuid.uuid4()}", err=True)
+            if standalone_mode:
+                raise SystemExit(exc.exit_code) from None
+            raise
+        if standalone_mode:
+            raise SystemExit(0 if result is None else result)
+        return result
+
+
+app = typer.Typer(cls=RequestIdTyperGroup, no_args_is_help=True, help="FrameRead 维护命令")
 app.add_typer(secrets.app, name="secrets")
 app.add_typer(admin.app, name="admin")
+app.add_typer(policy.app, name="policy")
+app.add_typer(maintenance.app, name="maintenance")
 app.add_typer(services.openapi_app, name="openapi")
 app.add_typer(services.worker_app, name="worker")
 app.add_typer(services.control_app, name="control")
