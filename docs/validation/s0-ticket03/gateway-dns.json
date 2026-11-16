@@ -1,0 +1,10 @@
+{
+  "original_api_ip": "172.28.0.4",
+  "changed_api_ip": "172.28.0.253",
+  "recovered_in_seconds": 2.516,
+  "statuses": [
+    0,
+    401
+  ],
+  "gateway_restarted": false
+}

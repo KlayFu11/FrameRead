@@ -1,0 +1,23 @@
+- banner:
+  - link "FrameRead":
+    - /url: /manage/
+  - text: 个人视频理解工作台
+- main:
+  - region "视频任务":
+    - paragraph: 任务详情
+    - heading "视频任务" [level=1]
+    - paragraph:
+      - text: 任务 ID：
+      - code: fbe20479-9626-4daf-a6b4-4a704384e8f6
+    - button "提交新任务"
+    - text: 当前状态
+    - strong: 排队中
+    - text: 阶段：尚未开始
+    - complementary:
+      - strong: S0 骨架：不会生成文章
+      - paragraph: 当前切片只验证任务受理、排队和状态快照，尚未接入视频解读流水线。
+    - term: 任务截止时间
+    - definition: 2026/11/16 13:49:43
+    - term: 进度观察时间
+    - definition: 2026/11/16 11:49:43
+- contentinfo: FrameRead

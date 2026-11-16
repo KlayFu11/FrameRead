@@ -1,0 +1,29 @@
+- banner:
+  - link "FrameRead":
+    - /url: /manage/
+  - text: 个人视频理解工作台
+- main:
+  - region "提交视频任务":
+    - paragraph: 视频解读
+    - heading "提交视频任务" [level=1]
+    - paragraph: 任务会先进入队列。S0 只验证受理和任务状态，不会生成文章。
+    - button "返回管理首页"
+    - text: 视频链接
+    - textbox "视频链接":
+      - /placeholder: https://www.youtube.com/watch?v=…
+      - text: https://youtu.be/dQw4w9WgXcQ?si=FR03
+    - text: 解读模式
+    - combobox "解读模式":
+      - option "完整解读" [selected]
+      - option "关注主题"
+    - text: 解读深度
+    - combobox "解读深度":
+      - option "简要"
+      - option "标准" [selected]
+      - option "详细"
+    - text: 关注点 可选，topic 模式必填
+    - textbox "关注点 可选，topic 模式必填":
+      - /placeholder: 例如：梳理作者提出的三个核心论点
+      - text: 验收关注点
+    - button "提交视频任务"
+- contentinfo: FrameRead
