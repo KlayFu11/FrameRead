@@ -17,10 +17,11 @@ Implementation commit: `24adb23` on `feat/s0-ticket-05`.
 
 ## Checks
 
-- Backend: `pytest -q -p no:cacheprovider --basetemp tmp/pytest-ticket05/full --tb=short` -> `262 passed, 1 warning`.
+- Backend before integration: `pytest -q -p no:cacheprovider --basetemp tmp/pytest-ticket05/full --tb=short` -> `262 passed, 1 warning`.
+- Backend after merging integration tip `03c7879` at `024b5e0`: `pytest -q -p no:cacheprovider --basetemp ../tmp/pytest-ticket05-integrated --tb=short` -> `274 passed, 1 warning`. The warning is the existing FastAPI/Starlette TestClient `httpx` deprecation. Tests use real PostgreSQL and Redis through the existing Ticket02 test environment, with per-test isolated databases.
 - Ticket05 final backend fault tests: `pytest tests/integration/test_admission_faults.py -q -p no:cacheprovider --basetemp tmp/pytest-ticket05/final-faults --tb=short` -> `4 passed, 1 warning`. Both unknown-result modes assert exactly one `commit_outcome=unknown` log.
-- Backend lint/format: Ruff check passed; `74 files already formatted`.
-- Backend types: strict mypy passed for 45 source files; frozen uv lock check passed.
+- Backend final lint/format: Ruff check passed; `80 files already formatted` after integration.
+- Backend final types: strict mypy passed for 48 source files after integration; frozen uv lock check passed before integration, which added no dependency change.
 - Frontend: `pnpm test --maxWorkers=1` -> `40 passed` across 5 test files. The regression tests also cover persistence before the first response and exclusion between operation lookup and submission retry.
 - Frontend typecheck: `tsc --noEmit` passed.
 - Frontend build: Vite production build passed (`90 modules transformed`).

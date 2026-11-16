@@ -21,4 +21,4 @@
 
 已实现并验证提交结果未确认时的同键恢复。真实 PostgreSQL wire-proxy 覆盖三种 COMMIT 故障，前端在请求发送前持久化不确定状态并锁定原始输入，支持同键重试和原操作查询；`QUEUE_FULL`、`DEPENDENCY_UNAVAILABLE` 与 `ADMISSION_UNCONFIRMED` 的文案和动作已区分。验证记录见 [`docs/validation/s0-ticket05/Ticket05.md`](../../../docs/validation/s0-ticket05/Ticket05.md)。
 
-实现提交：`24adb23`。后端全套 `262 passed`，最终故障回归 `4 passed`，前端全套 `40 passed`，生产构建通过。实际浏览器已覆盖 COMMIT 丢弃、响应丢失、刷新保键、查询 `404`、同键重试和原操作查询恢复；隔离网关验收与 Docker/nginx 整体验收的边界见验证记录。
+实现提交：`24adb23`。合入集成分支后的后端全套 `274 passed`，最终故障回归 `4 passed`，前端全套 `40 passed`，生产构建通过。实际浏览器已覆盖 COMMIT 丢弃、响应丢失、刷新保键、查询 `404`、同键重试和原操作查询恢复；隔离网关验收与 Docker/nginx 整体验收的边界见验证记录。
