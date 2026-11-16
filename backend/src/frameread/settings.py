@@ -138,6 +138,13 @@ class MigrateSecrets(_SecretFiles):
     master_key_file: str
 
 
+class CliSecrets(_SecretFiles):
+    """维护与策略 CLI 只使用应用 DML 角色的数据库连接（D09）。"""
+
+    database_dsn_file: str
+    master_key_file: str
+
+
 def load_secrets[T: _SecretFiles](cls: type[T]) -> T:
     try:
         return cls()
