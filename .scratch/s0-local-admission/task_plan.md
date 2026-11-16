@@ -2,7 +2,7 @@
 
 ## Current status: paused by user (2026-11-16)
 
-Stop implementation, fixes, ticket merges and acceptance work. Save existing changes as commits, push the integration branch plus the separate Ticket06 WIP and Ticket09 branches, and switch the main worktree to the verified remote `main` baseline. This explicit instruction supersedes the earlier no-push scope. Resume only after a new user request. See [pause record](PAUSED.md) for saved commits, unresolved findings and local preservation.
+Stop implementation, fixes, ticket merges and acceptance work. Save existing changes as commits, push only the current integration branch, and switch the main worktree to the verified remote `main` baseline. Ticket06 WIP and Ticket09 branches remain saved locally. Automatic approval review rejected publishing the additional branches and tag as outside the explicit push authorization; they are not part of the remote publication. The user's integration-branch push instruction supersedes the earlier no-push scope. Resume only after a new user request. See [pause record](PAUSED.md) for saved commits, unresolved findings and local preservation.
 
 At pause: 01–05 integrated; 06 saved as WIP at `76e0df6`; 09 committed at `d89c9fa` but not independently reviewed/merged. 07/08 not started and 10 not accepted. S0 is incomplete.
 

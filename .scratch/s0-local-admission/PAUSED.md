@@ -13,6 +13,8 @@
 
 Ticket07、08 尚未开始，Ticket10 仅有准备记录，不能视为已验收。01～05 的提交已能通过集成分支访问，无需重新合并或改写历史。
 
+远端发布范围仅为当前开发分支 `feat/s0-local-admission`。Ticket06、Ticket09 的独立分支和暂停 tag 均只保存在本地；自动审批拒绝了将这些额外 ref 一并发布的动作，因此未推送它们。
+
 ## 恢复前需要处理
 
 - Ticket06 的实例锁、失败快照公开错误契约及 visibility timeout 待复核，详见其分支上的 `docs/validation/s0-ticket06-status.md`；暂停时未修复这些问题。
