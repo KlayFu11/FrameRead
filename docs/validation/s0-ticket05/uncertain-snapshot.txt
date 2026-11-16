@@ -1,0 +1,49 @@
+[p1 "FrameRead · 管理入口" | space "FrameRead S0 Ticket05 recovery acceptance"(1): 1 managed, 0 untracked — p1* "FrameRead · 管理入口"]
+root
+  container
+    container
+      container
+        anchor [ref=5, loc=href:/manage/, url=http://127.0.0.1:18085/manage/]
+          text "FrameRead"
+        text "个人视频理解工作台"
+      container "提交视频任务"
+        container
+          container
+            paragraph
+              text "视频解读"
+            heading
+              text "提交视频任务"
+            paragraph
+              text "任务会先进入队列。S0 只验证受理和任务状态，不会生成文章。"
+          button [ref=6]
+            text "返回管理首页"
+        form
+          container
+            text "视频链接"
+            textbox [ref=7, loc=css:input[name="url"]]
+              text "https://youtu.be/dQw4w9WgXcQ?test=FR05-unknown"
+          container
+            container
+              text "解读模式"
+              combobox [ref=8, loc=css:select[name="mode"]]
+                text "完整解读"
+            container
+              text "解读深度"
+              combobox [ref=9, loc=css:select[name="depth"]]
+                text "标准"
+          container
+            container
+              text "关注点"
+              text "可选，topic 模式必填"
+            textbox [ref=10, loc=css:textarea[name="focus"]]
+              text "Ticket05 浏览器恢复验收"
+          button [ref=11]
+            text "用原操作标识重试"
+          status
+            paragraph
+              text "受理结果未确认。请使用原操作标识重试或查询，表单内容已锁定以避免重复提交不同请求。"
+            button [ref=13]
+              text "查询原操作"
+    anchor [ref=12]
+      image
+[more content below the viewport: scrollY=0, viewport 877 / page 1183 px; scroll or use snapshot({ scope: "full_page" })]

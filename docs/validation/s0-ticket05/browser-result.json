@@ -1,0 +1,22 @@
+{
+  "browser": "Ego Lite 0.6.3.14",
+  "origin": "http://127.0.0.1:18085",
+  "runtime": "real Uvicorn API + real PostgreSQL wire proxy + real Redis + built frontend through isolated test gateway",
+  "checks": [
+    "real dropped COMMIT returned ADMISSION_UNCONFIRMED",
+    "uncertainty locks original input",
+    "reload keeps same key and draft",
+    "operation404 keeps same key",
+    "same-key retry navigates to queued detail",
+    "gateway discarded actual202 response",
+    "response-loss reload keeps key",
+    "response-loss same-key retry restores queued task",
+    "mobile layout has no horizontal overflow",
+    "final build response-loss recovery through operation lookup",
+    "final build desktop recovery action notice reviewed"
+  ],
+  "responseLossTaskId": "468fa436-b5cd-4c32-9d59-8394911927ba",
+  "responseLossKey": "c785fdce-8252-410f-8784-934d2272b532",
+  "status": "passed",
+  "finalBuildLookupTaskId": "f7d1db48-6bc9-4284-98f0-df04af2cf505"
+}
