@@ -1,0 +1,15 @@
+{
+  "gateway": "http://127.0.0.1:8080",
+  "checks": {
+    "login": 201,
+    "submit": 202,
+    "replay": 202,
+    "snapshot": 200,
+    "operation": 200,
+    "conflict": 409
+  },
+  "task_id": "6a9ce885-309c-40ba-bb54-8e3947585dc9",
+  "status": "queued",
+  "attempt_no": 0,
+  "unknown_call_count": 0
+}

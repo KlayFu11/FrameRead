@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter, createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -14,6 +14,16 @@ function mount(path = '/manage/', returnTo?: string) {
   return router;
 }
 
+function taskSnapshot(taskId: string) {
+  return {
+    id: taskId, kind: 'video', intent: 'new', status: 'queued', stage: null,
+    state_revision: 1, event_seq: 1, cursor: 'cursor', instance_epoch: '00000000-0000-4000-8000-000000000001',
+    attempt_no: 0, progress: { stage: null, observed_at: '2026-11-16T00:00:00Z' },
+    deadline_at: '2026-11-16T02:00:00Z', cancel_requested_at: null, result: null, error: null,
+    draft_summary: null, allowed_actions: ['cancel'], unknown_call_count: 0,
+  };
+}
+
 function adminRequired() {
   return Response.json({ error: {
     code: 'ADMIN_REQUIRED', message: '需要登录', action: 'login', request_id: 'request-probe',
@@ -21,6 +31,24 @@ function adminRequired() {
 }
 
 describe('管理员登录与外壳', () => {
+  it('resets task detail state when navigation changes to another task', async () => {
+    let resolveTaskB: ((response: Response) => void) | undefined;
+    const taskB = new Promise<Response>((resolve) => { resolveTaskB = resolve; });
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ csrf_token: 'csrf-existing', expires_at: '2026-11-16T23:00:00Z' }))
+      .mockResolvedValueOnce(Response.json(taskSnapshot('task-a')))
+      .mockImplementationOnce(() => taskB);
+    vi.stubGlobal('fetch', fetcher);
+    const router = mount('/manage/tasks/task-a');
+
+    expect(await screen.findByText('排队中')).toBeVisible();
+    await act(async () => { await router.navigate('/manage/tasks/task-b'); });
+
+    expect(await screen.findByRole('status')).toHaveTextContent('正在读取任务快照');
+    expect(screen.queryByText('排队中')).not.toBeInTheDocument();
+    resolveTaskB?.(Response.json(taskSnapshot('task-b')));
+  });
+
   it('直接打开登录页也探测会话，已有有效会话时进入管理外壳', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
       csrf_token: 'csrf-existing', expires_at: '2026-11-16T23:00:00Z',

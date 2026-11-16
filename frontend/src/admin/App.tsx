@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router';
 import { ApiError, createAdminClient } from '../shared/api';
 import { ErrorNotice } from '../shared/ErrorNotice';
+import { TaskDetail } from './TaskDetail';
+import { VideoTaskForm } from './VideoTaskForm';
 import styles from './App.module.css';
 
 const sessionKey = ['admin', 'session'];
@@ -65,6 +67,23 @@ export function AdminApp() {
   }, [isLogin, loginRequired, session.isSuccess, location.state, navigate]);
   const passwordErrors = login.error instanceof ApiError && login.error.status === 422
     ? login.error.body.details?.filter((detail) => detail.field === 'password') ?? [] : [];
+  const taskMatch = location.pathname.match(/^\/manage\/tasks\/([^/]+)$/);
+  const authenticatedContent = location.pathname === '/manage/videos/new'
+    ? <VideoTaskForm api={api} />
+    : taskMatch ? <TaskDetail key={taskMatch[1]} api={api} taskId={decodeURIComponent(taskMatch[1])} />
+      : <section className={styles.shell} aria-labelledby="shell-title">
+        <div className={styles.sessionStatus}><span aria-hidden="true" /> 已登录</div>
+        <h1 id="shell-title">管理入口已就绪</h1>
+        <p>当前管理会话有效。</p>
+        <p className={styles.expiry}>会话到期时间：{new Date(session.data?.expires_at ?? '').toLocaleString()}</p>
+        <div className={styles.actionRow}>
+          <button className={styles.primary} type="button" onClick={() => void navigate('/manage/videos/new')}>提交视频任务</button>
+          <button className={styles.secondary} disabled={logout.isPending} onClick={() => logout.mutate()}>
+            {logout.isPending ? '正在退出…' : '退出登录'}
+          </button>
+        </div>
+        <ErrorNotice error={logout.error} />
+      </section>;
 
   return <div className={styles.page}>
     <header className={styles.header}>
@@ -95,16 +114,7 @@ export function AdminApp() {
         </form>
         <ErrorNotice error={login.error} handledFields={['password']} />
       </section> : session.isPending ? <p role="status">正在确认管理会话…</p>
-        : session.isSuccess ? <section className={styles.shell} aria-labelledby="shell-title">
-          <div className={styles.sessionStatus}><span aria-hidden="true" /> 已登录</div>
-          <h1 id="shell-title">管理入口已就绪</h1>
-          <p>当前管理会话有效。</p>
-          <p className={styles.expiry}>会话到期时间：{new Date(session.data.expires_at).toLocaleString()}</p>
-          <button className={styles.secondary} disabled={logout.isPending} onClick={() => logout.mutate()}>
-            {logout.isPending ? '正在退出…' : '退出登录'}
-          </button>
-          <ErrorNotice error={logout.error} />
-        </section> : <section className={styles.shell}>
+        : session.isSuccess ? authenticatedContent : <section className={styles.shell}>
           <h1>暂时无法确认管理会话</h1>
           <ErrorNotice error={session.error} />
           <button className={styles.secondary} onClick={() => void session.refetch()}>重新连接</button>

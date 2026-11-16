@@ -1,0 +1,75 @@
+{
+  "browserVersion": "156.0.8078.4",
+  "task_id": "fbe20479-9626-4daf-a6b4-4a704384e8f6",
+  "checks": [
+    "login returns to new-task form",
+    "complete/standard defaults",
+    "422 field error clears old key",
+    "refresh preserves draft fields",
+    "202 navigates to queued detail with S0 warning",
+    "new key after definitive422 and cleared after202",
+    "poll and refresh preserve task identity",
+    "new form starts empty",
+    "desktop/mobile no horizontal overflow",
+    "no page errors or external browser requests"
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/video-tasks",
+      "status": 422
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/session",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/video-tasks",
+      "status": 202
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tasks/fbe20479-9626-4daf-a6b4-4a704384e8f6",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tasks/fbe20479-9626-4daf-a6b4-4a704384e8f6",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tasks/fbe20479-9626-4daf-a6b4-4a704384e8f6",
+      "status": 200
+    }
+  ],
+  "operationKeys": [
+    "2980d2c5-377f-46e8-9e02-a9bfd5a2d686",
+    "41e53369-a220-4f64-a227-3369fae62695"
+  ],
+  "snapshot": {
+    "status": "queued",
+    "attempt_no": 0,
+    "unknown_call_count": 0,
+    "result": null
+  },
+  "pageErrors": [],
+  "externalHosts": []
+}

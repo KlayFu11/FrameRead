@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/v1/admin/operations/{scope}/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Operation */
+        get: operations["get_operation_api_v1_admin_operations__scope___key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/session": {
         parameters: {
             query?: never;
@@ -18,6 +35,40 @@ export interface paths {
         post: operations["create_session_api_v1_admin_session_post"];
         /** Logout */
         delete: operations["logout_api_v1_admin_session_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task */
+        get: operations["get_task_api_v1_admin_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/video-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Video Task */
+        post: operations["create_video_task_api_v1_admin_video_tasks_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -75,6 +126,138 @@ export interface components {
              */
             expires_at: string;
         };
+        /** TaskAccepted */
+        TaskAccepted: {
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Kind */
+            kind: string;
+            /** Operation Scope */
+            operation_scope: string;
+            /** Replayed */
+            replayed: boolean;
+            /** Snapshot Url */
+            snapshot_url: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "cancel_requested" | "retry_wait" | "succeeded" | "failed" | "canceled";
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
+        /** TaskError */
+        TaskError: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** TaskProgress */
+        TaskProgress: {
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Stage */
+            stage: string | null;
+        };
+        /** TaskSnapshot */
+        TaskSnapshot: {
+            /** Allowed Actions */
+            allowed_actions: "cancel"[];
+            /** Attempt No */
+            attempt_no: number;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /** Cursor */
+            cursor: string;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Draft Summary */
+            draft_summary?: null;
+            error: components["schemas"]["TaskError"] | null;
+            /** Event Seq */
+            event_seq: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Instance Epoch
+             * Format: uuid
+             */
+            instance_epoch: string;
+            /** Intent */
+            intent: string;
+            /** Kind */
+            kind: string;
+            progress: components["schemas"]["TaskProgress"];
+            /** Result */
+            result?: null;
+            /** Stage */
+            stage: string | null;
+            /** State Revision */
+            state_revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "cancel_requested" | "retry_wait" | "succeeded" | "failed" | "canceled";
+            /**
+             * Unknown Call Count
+             * @default 0
+             * @constant
+             */
+            unknown_call_count: 0;
+        };
+        /** VideoTaskCreate */
+        VideoTaskCreate: {
+            /** Asr Config Id */
+            asr_config_id?: string | null;
+            /**
+             * Depth
+             * @default standard
+             * @enum {string}
+             */
+            depth: "brief" | "standard" | "detailed";
+            /** Focus */
+            focus?: string | null;
+            /**
+             * Intent
+             * @default new
+             * @enum {string}
+             */
+            intent: "new" | "reinterpret";
+            /**
+             * Mode
+             * @default complete
+             * @enum {string}
+             */
+            mode: "complete" | "topic";
+            /** Provider Config Id */
+            provider_config_id?: string | null;
+            /** Url */
+            url: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -84,6 +267,83 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_operation_api_v1_admin_operations__scope___key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: "video:new";
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     read_session_api_v1_admin_session_get: {
         parameters: {
             query?: never;
@@ -263,6 +523,162 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_task_api_v1_admin_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSnapshot"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_video_task_api_v1_admin_video_tasks_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAccepted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
