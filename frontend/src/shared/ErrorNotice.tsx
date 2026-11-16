@@ -12,6 +12,12 @@ const actions: Record<string, string> = {
   none: '',
 };
 
+const codeActions: Record<string, string> = {
+  QUEUE_FULL: '当前排队已满，容量释放后可使用当前请求标识再次申请。',
+  DEPENDENCY_UNAVAILABLE: '依赖服务暂不可用，请稍后重试；当前操作标识已保留。',
+  ADMISSION_UNCONFIRMED: '受理结果尚未确认，请使用原操作标识重试或查询，不能换用新标识。',
+};
+
 export function ErrorNotice({ error, handledFields = [] }: { error: Error | null; handledFields?: string[] }) {
   const [copyStatus, setCopyStatus] = useState('');
   useEffect(() => setCopyStatus(''), [error]);
@@ -20,9 +26,9 @@ export function ErrorNotice({ error, handledFields = [] }: { error: Error | null
     return <div className={styles.notice} role="alert">请求未完成，请检查连接后重试。</div>;
   }
   const body = error.body;
-  const action = body.code === 'CSRF_REJECTED' ? '会话已重新获取，请刷新页面后重试。'
+  const action = codeActions[body.code] ?? (body.code === 'CSRF_REJECTED' ? '会话已重新获取，请刷新页面后重试。'
     : body.code === 'ORIGIN_REJECTED' ? '来源校验失败，请从管理入口地址访问。'
-      : actions[body.action] ?? '';
+      : actions[body.action] ?? '');
   const retryAfter = [429, 503].includes(error.status) ? body.retry_after_seconds : null;
   return <div className={styles.notice} role="alert">
     <p>{body.message}</p>

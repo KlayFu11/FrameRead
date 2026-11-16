@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { ApiError, type AdminClient, type VideoTaskInput } from '../shared/api';
+import { ApiError, type AdminClient, type TaskAccepted, type VideoTaskInput } from '../shared/api';
 import { ErrorNotice } from '../shared/ErrorNotice';
 import styles from './App.module.css';
 
@@ -15,6 +15,11 @@ type VideoDraft = {
   depth: VideoTaskInput['depth'];
   focus: string;
   uncertain: boolean;
+};
+
+type SubmissionVariables = {
+  input: VideoTaskInput;
+  draft: VideoDraft;
 };
 
 function newUuidV4(): string {
@@ -113,6 +118,10 @@ export function VideoTaskForm({ api }: { api: AdminClient }) {
   const navigate = useNavigate();
   const [draftState, setDraftState] = useState(readDraft);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+  const [lookupState, setLookupState] = useState<{ loading: boolean; message: string | null }>({
+    loading: false,
+    message: null,
+  });
   const { draft, blockedError } = draftState;
   const persistDraft = (next: VideoDraft) => {
     setDraftState({ draft: next, blockedError: null });
@@ -129,20 +138,21 @@ export function VideoTaskForm({ api }: { api: AdminClient }) {
     setDraftState({ draft: { ...draft, key: newUuidV4(), uncertain: false }, blockedError: null });
   };
   const mutation = useMutation({
-    mutationFn: (input: VideoTaskInput) => api.createVideoTask(input, draft.key),
+    mutationFn: ({ input, draft: submittedDraft }: SubmissionVariables) => api.createVideoTask(input, submittedDraft.key),
     retry: false,
     onSuccess: (accepted) => {
       sessionStorage.removeItem(videoDraftKeyStorage);
       sessionStorage.removeItem(videoDraftStorage);
       void navigate(`/manage/tasks/${encodeURIComponent(accepted.task_id)}`);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         clearDraftForNextSubmission();
       } else {
-        const next = { ...draft, uncertain: true };
-        setDraftState({ draft: next, blockedError: null });
-        sessionStorage.setItem(videoDraftStorage, JSON.stringify(next));
+        const knownDefinitiveFailure = error instanceof ApiError
+          && ['QUEUE_FULL', 'DEPENDENCY_UNAVAILABLE', 'MAINTENANCE'].includes(error.body.code);
+        const next = { ...variables.draft, uncertain: !knownDefinitiveFailure };
+        persistDraft(next);
       }
     },
   });
@@ -151,6 +161,22 @@ export function VideoTaskForm({ api }: { api: AdminClient }) {
   const input: VideoTaskInput = {
     url: draft.url.trim(), mode: draft.mode, depth: draft.depth, focus: draft.focus.trim() || null,
     provider_config_id: null, asr_config_id: null, intent: 'new',
+  };
+  const lookupOperation = async () => {
+    const key = draft.key;
+    setLookupState({ loading: true, message: null });
+    try {
+      const accepted = await api.request<TaskAccepted>(`/operations/video:new/${encodeURIComponent(key)}`);
+      sessionStorage.removeItem(videoDraftKeyStorage);
+      sessionStorage.removeItem(videoDraftStorage);
+      void navigate(`/manage/tasks/${encodeURIComponent(accepted.task_id)}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setLookupState({ loading: false, message: '暂未找到原操作，请继续使用原操作标识重试。' });
+      } else {
+        setLookupState({ loading: false, message: '查询原操作失败，请继续使用原操作标识重试。' });
+      }
+    }
   };
 
   return <section className={styles.taskPage} aria-labelledby="new-video-title">
@@ -164,12 +190,13 @@ export function VideoTaskForm({ api }: { api: AdminClient }) {
     </div>
     <form className={styles.taskForm} onSubmit={(event) => {
       event.preventDefault();
-      if (mutation.isPending || blockedError) return;
+      if (mutation.isPending || lookupState.loading || blockedError) return;
       const nextErrors = validate(input);
       setClientErrors(nextErrors);
       if (Object.keys(nextErrors).length) return;
-      persistDraft({ ...draft, uncertain: false });
-      mutation.mutate(input);
+      const submittedDraft = { ...draft, uncertain: true };
+      persistDraft(submittedDraft);
+      mutation.mutate({ input, draft: submittedDraft });
     }}>
       <div className={styles.field}>
         <label htmlFor="video-url">视频链接</label>
@@ -206,10 +233,18 @@ export function VideoTaskForm({ api }: { api: AdminClient }) {
           placeholder="例如：梳理作者提出的三个核心论点" />
         {errors.focus && <p id="video-focus-error" className={styles.fieldError}>{errors.focus}</p>}
       </div>
-      <button className={styles.primary} type="submit" disabled={mutation.isPending || Boolean(blockedError)}>
-        {mutation.isPending ? '正在提交…' : '提交视频任务'}
+      <button className={styles.primary} type="submit" disabled={mutation.isPending || lookupState.loading || Boolean(blockedError)}>
+        {mutation.isPending ? '正在提交…' : draft.uncertain && !blockedError ? '用原操作标识重试' : '提交视频任务'}
       </button>
-      {draft.uncertain && <p className={styles.draftNotice} role="status">受理结果未确认。请使用原操作标识重试，表单内容已锁定以避免重复提交不同请求。</p>}
+      {draft.uncertain && <div className={styles.draftNotice} role="status">
+        <p>受理结果未确认。请使用原操作标识重试或查询，表单内容已锁定以避免重复提交不同请求。</p>
+        <div className={styles.actionRow}>
+          <button className={styles.secondary} type="button" disabled={mutation.isPending || lookupState.loading} onClick={() => void lookupOperation()}>
+            {lookupState.loading ? '正在查询…' : '查询原操作'}
+          </button>
+        </div>
+        {lookupState.message && <p role="alert">{lookupState.message}</p>}
+      </div>}
       {blockedError && <p className={styles.draftNotice} role="alert">{blockedError}</p>}
       <ErrorNotice error={mutation.error} handledFields={['url', 'mode', 'depth', 'focus']} />
     </form>
