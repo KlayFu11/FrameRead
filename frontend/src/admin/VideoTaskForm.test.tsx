@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -14,9 +14,14 @@ function mount(fetcher: typeof fetch) {
   return router;
 }
 
-function errorResponse(status: number, details: Array<{ field: string; code: string; message: string }> = []) {
+function errorResponse(
+  status: number,
+  details: Array<{ field: string; code: string; message: string }> = [],
+  code = status === 503 ? 'QUEUE_FULL' : status === 404 ? 'NOT_FOUND' : 'INVALID_INPUT',
+  action = status === 503 ? 'retry_later' : 'none',
+) {
   return Response.json({ error: {
-    code: status === 503 ? 'QUEUE_FULL' : 'INVALID_INPUT', message: '请求未完成', action: 'fix_input',
+    code, message: '请求未完成', action,
     request_id: 'request-video', retry_after_seconds: status === 503 ? 2 : null, task_id: null, details,
   } }, { status });
 }
@@ -134,8 +139,117 @@ describe('video task submission form', () => {
     const user = userEvent.setup();
     expect(screen.getByLabelText('视频链接')).toHaveValue('https://www.youtube.com/watch?v=old');
     expect(screen.getByLabelText('视频链接')).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: '提交视频任务' }));
+    await user.click(screen.getByRole('button', { name: '用原操作标识重试' }));
     const submittedKey = new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('Idempotency-Key');
     expect(submittedKey).toBe(oldKey);
+  });
+
+  it('persists uncertain before a response-loss failure and locks the original input', async () => {
+    sessionStorage.clear();
+    const key = '66666666-6666-4666-8666-666666666666';
+    sessionStorage.setItem(videoDraftKeyStorage, key);
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValueOnce(new TypeError('connection closed'));
+    mount(fetcher);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('视频链接'), 'https://www.youtube.com/watch?v=lost-response');
+    await user.click(screen.getByRole('button', { name: '提交视频任务' }));
+    expect(await screen.findByText(/受理结果未确认/)).toBeVisible();
+    expect(screen.getByLabelText('视频链接')).toBeDisabled();
+    expect(screen.getByRole('button', { name: '用原操作标识重试' })).toBeEnabled();
+    expect(JSON.parse(sessionStorage.getItem(videoDraftStorage) as string)).toMatchObject({ key, uncertain: true });
+    expect(sessionStorage.getItem(videoDraftKeyStorage)).toBe(key);
+  });
+
+  it('keeps known queue and dependency failures distinct without marking admission uncertain', async () => {
+    for (const code of ['QUEUE_FULL', 'DEPENDENCY_UNAVAILABLE'] as const) {
+      sessionStorage.clear();
+      const key = code === 'QUEUE_FULL' ? '77777777-7777-4777-8777-777777777777' : '88888888-8888-4888-8888-888888888888';
+      sessionStorage.setItem(videoDraftKeyStorage, key);
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(errorResponse(
+        503,
+        [],
+        code,
+        'retry_later',
+      ));
+      mount(fetcher);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText('视频链接'), 'https://www.youtube.com/watch?v=known-503');
+      await user.click(screen.getByRole('button', { name: '提交视频任务' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(code === 'QUEUE_FULL' ? '排队已满' : '依赖服务暂不可用');
+      expect(screen.queryByText(/受理结果未确认/)).not.toBeInTheDocument();
+      expect(screen.getByLabelText('视频链接')).toBeEnabled();
+      expect(sessionStorage.getItem(videoDraftKeyStorage)).toBe(key);
+      cleanup();
+    }
+  });
+
+  it('queries an uncertain operation with the same key and keeps it after a 404', async () => {
+    sessionStorage.clear();
+    const key = '99999999-9999-4999-8999-999999999999';
+    sessionStorage.setItem(videoDraftKeyStorage, key);
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(errorResponse(503, [], 'ADMISSION_UNCONFIRMED', 'resolve_same_key'))
+      .mockResolvedValueOnce(errorResponse(404))
+      .mockResolvedValueOnce(Response.json({
+        task_id: 'task-recovered', kind: 'video', status: 'queued', accepted_at: '2026-11-16T00:00:00Z',
+        deadline_at: '2026-11-16T02:00:00Z', snapshot_url: '/api/v1/admin/tasks/task-recovered', replayed: true,
+        operation_scope: 'video:new',
+      }, { status: 202 }));
+    const router = mount(fetcher);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('视频链接'), 'https://www.youtube.com/watch?v=uncertain');
+    await user.click(screen.getByRole('button', { name: '提交视频任务' }));
+    await screen.findByText(/受理结果未确认/);
+    await user.click(screen.getByRole('button', { name: '查询原操作' }));
+    expect(await screen.findByText('暂未找到原操作，请继续使用原操作标识重试。')).toBeVisible();
+    expect(sessionStorage.getItem(videoDraftKeyStorage)).toBe(key);
+    await user.click(screen.getByRole('button', { name: '用原操作标识重试' }));
+    expect(router.state.location.pathname).toBe('/manage/tasks/task-recovered');
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(new Headers(fetcher.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
+  });
+
+  it('persists and locks the request while its first response is still pending', async () => {
+    sessionStorage.clear();
+    const key = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    sessionStorage.setItem(videoDraftKeyStorage, key);
+    let reply!: (response: Response) => void;
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() => new Promise((resolve) => { reply = resolve; }));
+    mount(fetcher);
+    const user = userEvent.setup();
+    const url = 'https://youtu.be/dQw4w9WgXcQ?pending=true';
+    await user.type(screen.getByLabelText('视频链接'), url);
+    await user.click(screen.getByRole('button', { name: '提交视频任务' }));
+    expect(screen.getByLabelText('视频链接')).toBeDisabled();
+    expect(screen.getByRole('button', { name: '正在提交…' })).toBeDisabled();
+    expect(JSON.parse(sessionStorage.getItem(videoDraftStorage) as string)).toMatchObject({ key, url, uncertain: true });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    reply(errorResponse(503));
+    await screen.findByRole('alert');
+  });
+
+  it('waits for an operation lookup before permitting a concurrent retry', async () => {
+    sessionStorage.clear();
+    const key = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    sessionStorage.setItem(videoDraftKeyStorage, key);
+    sessionStorage.setItem(videoDraftStorage, JSON.stringify({
+      key, url: 'https://youtu.be/dQw4w9WgXcQ', mode: 'complete', depth: 'standard', focus: '', uncertain: true,
+    }));
+    let reply!: (response: Response) => void;
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() => new Promise((resolve) => { reply = resolve; }));
+    const router = mount(fetcher);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '查询原操作' }));
+    expect(screen.getByRole('button', { name: '正在查询…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '用原操作标识重试' })).toBeDisabled();
+    reply(Response.json({
+      task_id: 'task-found', kind: 'video', status: 'queued', accepted_at: '2026-11-16T00:00:00Z',
+      deadline_at: '2026-11-16T02:00:00Z', snapshot_url: '/api/v1/admin/tasks/task-found', replayed: true,
+      operation_scope: 'video:new',
+    }));
+    await screen.findByRole('heading', { name: '提交视频任务' });
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/manage/tasks/task-found'));
+    expect(sessionStorage.getItem(videoDraftKeyStorage)).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
