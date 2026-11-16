@@ -47,10 +47,9 @@
 ```sh
 uv run --project backend frameread admin set-password --out deploy/secrets/admin_password_hash --force
 docker compose -f deploy/compose.yaml up -d --force-recreate api-admin
-docker compose -f deploy/compose.yaml restart gateway
 ```
 
-CLI 原子替换 hash 文件后，重新创建 api-admin 会重新挂载 secret 并读取新 hash，既有会话随 `credential_generation` 变化而失效。gateway 在 API 重建后重启，以重新解析其容器地址。密码写入文件本身不改变已运行进程的凭据。
+CLI 原子替换 hash 文件后，重新创建 api-admin 会重新挂载 secret 并读取新 hash，既有会话随 `credential_generation` 变化而失效。gateway 通过 Docker DNS 自动重新解析 API 地址，无需同步重启；地址变化时可能短暂不可用，实测见 [Ticket03 验证记录](../docs/validation/s0-ticket03/03-video-admission.md#容器与-gateway-回归)。密码写入文件本身不改变已运行进程的凭据。
 
 ## 网关、来源与本地调试
 
