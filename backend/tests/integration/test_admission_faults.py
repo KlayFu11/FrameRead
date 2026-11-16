@@ -29,6 +29,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.faults]
 
 ORIGIN = test_admin_sessions.ORIGIN
 admin_env = test_admin_health.admin_env
+session_app = test_admin_sessions.session_app
 BODY = {"url": "https://youtu.be/dQw4w9WgXc", "mode": "complete", "depth": "standard"}
 
 
@@ -133,7 +134,67 @@ def test_disconnect_before_task_insert_rolls_back_without_residue(migrated_db, a
     assert any(entry.get("commit_outcome") == "rolled_back" for entry in logs)
 
 
-def test_serializable_failure_retries_whole_transaction_and_keeps_identity(migrated_db):
+@pytest.mark.parametrize("sqlstate", ["40001", "40P01"])
+def test_admission_retries_retryable_sqlstate_and_preserves_operation_identity(migrated_db, session_app, sqlstate):
+    migration = migrated_db.migrate_engine()
+    try:
+        with migration.begin() as conn:
+            # sequence 不随失败事务回滚，确保只在首次插入时从数据库外部注入故障。
+            conn.execute(text("CREATE SEQUENCE ticket05_insert_attempt"))
+            conn.execute(text("GRANT USAGE, SELECT ON SEQUENCE ticket05_insert_attempt TO frameread_app"))
+            conn.execute(
+                text(f"""
+                CREATE FUNCTION ticket05_retry_once() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    IF nextval('ticket05_insert_attempt') = 1 THEN
+                        RAISE EXCEPTION 'Ticket05 injected retryable failure' USING ERRCODE = '{sqlstate}';
+                    END IF;
+                    RETURN NEW;
+                END $$
+                """)
+            )
+            conn.execute(
+                text("""
+                CREATE TRIGGER ticket05_retry_once BEFORE INSERT ON tasks
+                FOR EACH ROW EXECUTE FUNCTION ticket05_retry_once()
+                """)
+            )
+    finally:
+        migration.dispose()
+
+    app, password = session_app
+    key = str(uuid.uuid4())
+    with TestClient(app, base_url=ORIGIN) as client:
+        session = test_admin_sessions.login(client, password)
+        assert session.status_code == 201, session.text
+        csrf = session.json()["csrf_token"]
+        response = _submit(client, csrf, key)
+        assert response.status_code == 202, response.text
+        accepted = response.json()
+        assert accepted["replayed"] is False and accepted["operation_scope"] == "video:new"
+        lookup = client.get(f"/api/v1/admin/operations/video:new/{key}")
+        assert lookup.status_code == 200, lookup.text
+        assert lookup.json()["task_id"] == accepted["task_id"]
+        replay = _submit(client, csrf, key)
+        assert replay.status_code == 202, replay.text
+        assert replay.json()["replayed"] is True and replay.json()["task_id"] == accepted["task_id"]
+
+    assert _counts(migrated_db) == (1, 1, 1)
+    engine = migrated_db.app_engine()
+    try:
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT last_value FROM ticket05_insert_attempt")).scalar_one() == 2
+            persisted = conn.execute(select(tasks.c.id, tasks.c.operation_scope, tasks.c.idempotency_key)).one()
+            assert persisted.id == uuid.UUID(accepted["task_id"])
+            assert (persisted.operation_scope, persisted.idempotency_key) == ("video:new", uuid.UUID(key))
+            assert conn.execute(select(task_outbox.c.task_id)).scalar_one() == persisted.id
+            event = conn.execute(select(task_events.c.task_id, task_events.c.event_type)).one()
+            assert (event.task_id, event.event_type) == (persisted.id, "accepted")
+    finally:
+        engine.dispose()
+
+
+def test_serializable_failure_retries_whole_transaction(migrated_db):
     migration = migrated_db.migrate_engine()
     with migration.begin() as conn:
         conn.execute(text("CREATE TABLE ticket05_serializable_probe (id int PRIMARY KEY, value int NOT NULL)"))
@@ -147,14 +208,11 @@ def test_serializable_failure_retries_whole_transaction_and_keeps_identity(migra
     engine = make_engine(migrated_db.app_dsn, pool_size=4, pool_timeout=5)
     barrier = threading.Barrier(2, timeout=10)
     attempts: dict[str, int] = {"left": 0, "right": 0}
-    identities: list[uuid.UUID] = []
-    identity = uuid.uuid4()
     errors: list[BaseException] = []
 
     def worker(name: str) -> None:
         def transaction(uow):
             attempts[name] += 1
-            identities.append(identity)
             uow.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
             uow.execute(text("SELECT value FROM ticket05_serializable_probe WHERE id = 1")).scalar_one()
             if attempts[name] == 1:
@@ -174,7 +232,6 @@ def test_serializable_failure_retries_whole_transaction_and_keeps_identity(migra
     try:
         assert errors == []
         assert sorted(attempts.values()) == [1, 2]
-        assert identities and set(identities) == {identity}
         with engine.connect() as conn:
             assert conn.execute(text("SELECT value FROM ticket05_serializable_probe WHERE id = 1")).scalar_one() == 2
     finally:

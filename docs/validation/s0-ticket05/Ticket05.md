@@ -12,14 +12,16 @@ Implementation commit: `24adb23` on `feat/s0-ticket-05`.
 - Dropped `COMMIT` and connection close produced `503 ADMISSION_UNCONFIRMED` with `action=resolve_same_key`; the same key could be submitted again without leaving rows after the first attempt.
 - Forwarded `COMMIT` with the response discarded produced `202` with `replayed=true` and the original task ID. A direct operation lookup returned the same task.
 - Connection close before the `tasks` insert produced `503 DEPENDENCY_UNAVAILABLE`; `tasks`, `task_outbox`, and `task_events` all remained empty. Logs contained `commit_outcome=rolled_back`.
-- The two unknown-result modes logged `commit_outcome=unknown` and the faulted transaction did not re-run its COMMIT. The existing real deadlock test covers `40P01`; the new real `SERIALIZABLE` race covers `40001` and verifies whole-transaction retry with the same identity.
+- The two unknown-result modes logged `commit_outcome=unknown` and the faulted transaction did not re-run its COMMIT. The existing real deadlock test covers `40P01`; the real `SERIALIZABLE` race covers `40001` and verifies whole-transaction retry and the final database value.
+- A separate parametrized HTTP admission regression externally injects `40001` and `40P01` through a test-only PostgreSQL trigger on the first task insert. The nontransactional sequence proves two insert attempts. The response, operation lookup, same-key replay and persisted `(operation_scope, idempotency_key)` identify the same accepted task, with exactly one task, Outbox and accepted event. This is SQLSTATE injection, distinct from the genuine contention tests above; production has no test switch.
 - `frontend/src/admin/VideoTaskForm.tsx` persists `uncertain=true` before sending, locks the submitted fields while pending/uncertain, retains every `503` key, distinguishes `QUEUE_FULL` and `DEPENDENCY_UNAVAILABLE`, and queries `/operations/video:new/{key}` through `api.request` without clearing the key on `404`.
 
 ## Checks
 
 - Backend before integration: `pytest -q -p no:cacheprovider --basetemp tmp/pytest-ticket05/full --tb=short` -> `262 passed, 1 warning`.
 - Backend after merging integration tip `03c7879` at `024b5e0`: `pytest -q -p no:cacheprovider --basetemp ../tmp/pytest-ticket05-integrated --tb=short` -> `274 passed, 1 warning`. The warning is the existing FastAPI/Starlette TestClient `httpx` deprecation. Tests use real PostgreSQL and Redis through the existing Ticket02 test environment, with per-test isolated databases.
-- Ticket05 final backend fault tests: `pytest tests/integration/test_admission_faults.py -q -p no:cacheprovider --basetemp tmp/pytest-ticket05/final-faults --tb=short` -> `4 passed, 1 warning`. Both unknown-result modes assert exactly one `commit_outcome=unknown` log.
+- Ticket05 backend fault tests after independent review: `pytest tests/integration/test_admission_faults.py -q -p no:cacheprovider --basetemp ../tmp/pytest-ticket05-review --tb=short` -> `6 passed, 1 warning`. Both unknown-result modes assert exactly one `commit_outcome=unknown` log.
+- Mutation check: temporarily disabling async transaction retries made both new public admission regressions fail (`503` instead of `202`); the source was restored exactly, with no production diff. The complete backend suite then passed: `pytest -q -p no:cacheprovider --basetemp ../tmp/pytest-ticket05-review-full --tb=short` -> `276 passed, 1 warning` on the same integrated base. Ruff check and format check passed for the changed test file.
 - Backend final lint/format: Ruff check passed; `80 files already formatted` after integration.
 - Backend final types: strict mypy passed for 48 source files after integration; frozen uv lock check passed before integration, which added no dependency change.
 - Frontend: `pnpm test --maxWorkers=1` -> `40 passed` across 5 test files. The regression tests also cover persistence before the first response and exclusion between operation lookup and submission retry.
@@ -40,5 +42,7 @@ The task-created browser space and test gateway/API were closed. The runtime hel
 ## Review
 
 Review found and fixed two timing issues: the PostgreSQL response-drop trigger must be armed before forwarding `COMMIT`, and an operation lookup must disable simultaneous submission retry. The lookup regression failed before the UI fix and passed after it. Complete diff review, including new tests and browser artifacts, then completed twice with no remaining finding.
+
+Independent review removed an ineffective constant-UUID assertion from the real serialization race and narrowed its evidence claim. Operation identity is now checked through the public HTTP and persisted database results described above; the mutation check confirms that these regressions detect a disabled retry path. The test and evidence corrections received two complete reviews without further findings. Browser evidence remains applicable because this correction changes no production or frontend source.
 
 No deployment or push was performed by this ticket branch.
