@@ -15,6 +15,7 @@ from frameread.api.errors import install_error_handling
 from frameread.api.runtime import AdminRuntime
 from frameread.api.sessions import AdminBoundaryMiddleware
 from frameread.api.sessions import router as session_router
+from frameread.api.tasks import router as task_router
 from frameread.db.bootstrap import parse_root_key
 from frameread.db.engine import make_async_engine
 from frameread.observability.logging import configure_logging
@@ -92,6 +93,7 @@ def build_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] |
     app.add_middleware(AdminBoundaryMiddleware)
     install_error_handling(app)
     app.include_router(session_router)
+    app.include_router(task_router)
 
     # 内部健康接口：只在容器内网可达，gateway 不转发（R3）
     @app.get("/health/live", include_in_schema=False)

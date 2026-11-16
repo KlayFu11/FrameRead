@@ -1,5 +1,6 @@
 import hmac
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.resources import files
 
@@ -95,10 +96,16 @@ def _initialize_instance(conn: Connection, policy: ResourcePolicy, root_key: byt
         if row.policy_json != policy.model_dump(mode="json"):
             # policy_json 是运行时唯一来源，settings.toml 只提供初始值（Q14）
             _log.warning("policy_differs_from_settings")
-    conn.commit()
 
 
-def run_migrations(conn: Connection, *, scale: DeploymentScale, policy: ResourcePolicy, root_key: bytes) -> None:
+def run_migrations(
+    conn: Connection,
+    *,
+    scale: DeploymentScale,
+    policy: ResourcePolicy,
+    root_key: bytes,
+    after_initialize: Callable[[Connection], None] | None = None,
+) -> None:
     """持 advisory lock 执行迁移并在空库初始化实例单例（Q7、D04）。"""
     check_connection_budget(conn, scale)
     conn.commit()
@@ -113,6 +120,9 @@ def run_migrations(conn: Connection, *, scale: DeploymentScale, policy: Resource
         command.upgrade(alembic_config(conn), "head")
         conn.commit()
         _initialize_instance(conn, policy, root_key)
+        if after_initialize is not None:
+            after_initialize(conn)
+        conn.commit()
     finally:
         conn.rollback()
         conn.execute(select(func.pg_advisory_unlock(MIGRATION_LOCK_KEY)))

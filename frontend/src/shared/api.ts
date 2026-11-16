@@ -4,6 +4,10 @@ export type Session = components['schemas']['SessionResponse'];
 export type LoginInput = components['schemas']['PasswordLogin'];
 export type ErrorBody = components['schemas']['ErrorEnvelope']['error'];
 
+export type VideoTaskInput = components['schemas']['VideoTaskCreate'];
+export type TaskAccepted = components['schemas']['TaskAccepted'];
+export type TaskSnapshot = components['schemas']['TaskSnapshot'];
+
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly body: ErrorBody) {
     super(body.message);
@@ -62,5 +66,19 @@ export function createAdminClient({ fetcher = fetch, onUnauthorized }: ClientOpt
     return result;
   }
 
-  return { request, session, login, logout };
+  async function createVideoTask(input: VideoTaskInput, idempotencyKey: string): Promise<TaskAccepted> {
+    return request<TaskAccepted>('/video-tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(input),
+    });
+  }
+
+  async function taskSnapshot(taskId: string): Promise<TaskSnapshot> {
+    return request<TaskSnapshot>(`/tasks/${encodeURIComponent(taskId)}`);
+  }
+
+  return { request, session, login, logout, createVideoTask, taskSnapshot };
 }
+
+export type AdminClient = ReturnType<typeof createAdminClient>;

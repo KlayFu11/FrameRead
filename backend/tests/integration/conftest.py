@@ -120,11 +120,12 @@ def fresh_db(superuser_engine: Engine) -> Iterator[TestDatabase]:
 def template_db(superuser_engine: Engine) -> Iterator[TestDatabase]:
     """每个测试会话迁移一次的模板库（D38）；模板不被测试直接使用。"""
     from frameread.db.bootstrap import run_migrations
+    from frameread.services.admission import sync_execution_slots
 
     db = _create_database(superuser_engine)
     engine = db.migrate_engine()
     with engine.connect() as conn:
-        run_migrations(conn, scale=SCALE, policy=POLICY, root_key=ROOT_KEY)
+        run_migrations(conn, scale=SCALE, policy=POLICY, root_key=ROOT_KEY, after_initialize=sync_execution_slots)
     engine.dispose()
     yield db
     _drop_database(superuser_engine, db)

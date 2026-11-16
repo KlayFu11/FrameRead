@@ -15,6 +15,7 @@ from frameread.db.bootstrap import (
     verify_startup,
 )
 from frameread.security.crypto import KeyPurpose
+from frameread.services.admission import sync_execution_slots
 from frameread.settings import DeploymentScale
 
 from .conftest import POLICY, ROOT_KEY, SCALE
@@ -51,6 +52,37 @@ def test_empty_database_migrates_and_initializes_instance(fresh_db):
     with engine.connect() as conn:
         assert database_head(conn) == expected_head()
     engine.dispose()
+
+
+def test_initialize_and_slot_sync_commit_together_and_preserve_runtime_policy(fresh_db):
+    engine = fresh_db.migrate_engine()
+
+    def fail_after_slots(conn):
+        sync_execution_slots(conn)
+        raise RuntimeError("slot bootstrap failed")
+
+    try:
+        with engine.connect() as conn, pytest.raises(RuntimeError, match="slot bootstrap failed"):
+            run_migrations(conn, scale=SCALE, policy=POLICY, root_key=ROOT_KEY, after_initialize=fail_after_slots)
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM instance_state")).scalar_one() == 0
+            assert conn.execute(text("SELECT count(*) FROM resource_slots")).scalar_one() == 0
+            run_migrations(conn, scale=SCALE, policy=POLICY, root_key=ROOT_KEY, after_initialize=sync_execution_slots)
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE instance_state SET policy_json = jsonb_set(policy_json, "
+                    "'{pools,video,execution_slots}', '1'), version=version+1"
+                )
+            )
+        with engine.connect() as conn:
+            run_migrations(conn, scale=SCALE, policy=POLICY, root_key=ROOT_KEY, after_initialize=sync_execution_slots)
+            assert conn.execute(text("SELECT count(*) FROM resource_slots WHERE slot_state='active'")).scalar_one() == 1
+            assert (
+                conn.execute(text("SELECT count(*) FROM resource_slots WHERE slot_state='retired'")).scalar_one() == 1
+            )
+    finally:
+        engine.dispose()
 
 
 def test_second_migrate_keeps_identity_and_epoch(fresh_db):

@@ -23,6 +23,7 @@ from frameread.db.engine import make_engine
 from frameread.db.uow import run_transaction, sqlstate_of
 from frameread.observability.liveness import DEFAULT_HEARTBEAT_DIR, HEARTBEAT_DIR_ENV, touch_heartbeat
 from frameread.observability.logging import configure_logging
+from frameread.services.admission import sync_execution_slots
 from frameread.settings import (
     CONTROL_CONNECTIONS,
     WORKER_CHILD_CONNECTIONS,
@@ -51,7 +52,13 @@ def migrate() -> None:
         engine = make_engine(secrets.secret("database_dsn_file"), pool_size=1, pool_timeout=10)
         try:
             with engine.connect() as conn:
-                run_migrations(conn, scale=config.deployment, policy=config.policy, root_key=root_key)
+                run_migrations(
+                    conn,
+                    scale=config.deployment,
+                    policy=config.policy,
+                    root_key=root_key,
+                    after_initialize=sync_execution_slots,
+                )
         finally:
             engine.dispose()
     except (ConfigError, StartupError) as exc:
