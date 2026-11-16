@@ -397,7 +397,7 @@ L0 底座      M01 实例门禁与平台底座
 
 | 切片 | 新增所需模块 SPEC（另含全部前序切片所需） | Ticket 目录 | Ticket 完成/总数 | AT 证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 4/10（01～04 resolved，05、06、09 实施中） | `docs/validation/s0/01-platform-skeleton.md`、`docs/validation/s0-ticket02/02-admin-login-shell.md`、`docs/validation/s0-ticket03/03-video-admission.md`、`docs/validation/s0-ticket04/04-policy-maintenance-cli.md` | 进行中 |
+| S0 | M01、M02、M03、M04、M12 | `.scratch/s0-local-admission/` | 5/10 已合入（01～05；06 为 WIP，09 独立分支已提交） | `docs/validation/s0/01-platform-skeleton.md`、`docs/validation/s0-ticket02/02-admin-login-shell.md`、`docs/validation/s0-ticket03/03-video-admission.md`、`docs/validation/s0-ticket04/04-policy-maintenance-cli.md`、`docs/validation/s0-ticket05/Ticket05.md` | 暂时不开发（2026-11-16） |
 | S1 | M05、M06、M07、M08、M09、M10、M11，M12 复核 | `.scratch/s1-subtitle-article/` | 0/0 | — | 未开始 |
 | S2 | — | `.scratch/s2-platforms-asr/` | 0/0 | — | 未开始 |
 | S3 | — | `.scratch/s3-request-behaviors/` | 0/0 | — | 未开始 |
@@ -419,8 +419,8 @@ L0 底座      M01 实例门禁与平台底座
 
 ### 10.4 当前可执行
 
-- 批次 A 五个模块 Grill 已对齐，逐条决定见 [grill-batch-a.md](grill-batch-a.md)。五份模块 SPEC 已确认，SPEC 待确认事项的裁决见 [spec-resolutions-batch-a.md](spec-resolutions-batch-a.md)。S0 已拆为 10 个 Ticket（`.scratch/s0-local-admission/issues/`）。01～04 已合入集成分支；05、06、09 并行实施，07、08 等待 06。执行记录见 [S0 实施计划](../s0-local-admission/task_plan.md)。
-- S0 在分支 `feat/s0-local-admission` 上进行；基线文档已提交于 `b7674bb`。
+- 批次 A 五个模块 Grill 已对齐，逐条决定见 [grill-batch-a.md](grill-batch-a.md)。五份模块 SPEC 已确认，SPEC 待确认事项的裁决见 [spec-resolutions-batch-a.md](spec-resolutions-batch-a.md)。S0 已拆为 10 个 Ticket（`.scratch/s0-local-admission/issues/`）。01～05 已合入集成分支；06 已保存 WIP，09 已在独立分支提交但尚未合入，07、08 未开始，10 未验收。执行记录见 [S0 实施计划](../s0-local-admission/task_plan.md)。
+- S0 分支 `feat/s0-local-admission` 自 2026-11-16 起按用户要求暂停，不自动恢复；主工作目录切回远端同步基线 `b7674bb`。保存分支与待处理问题见 [暂停记录](../s0-local-admission/PAUSED.md)。
 
 ## 11. 待模块 Grill 解决的问题
 

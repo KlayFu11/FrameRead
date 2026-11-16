@@ -1,5 +1,11 @@
 # S0 implementation
 
+## Current status: paused by user (2026-11-16)
+
+Stop implementation, fixes, ticket merges and acceptance work. Save existing changes as commits, push the integration branch plus the separate Ticket06 WIP and Ticket09 branches, and switch the main worktree to the verified remote `main` baseline. This explicit instruction supersedes the earlier no-push scope. Resume only after a new user request. See [pause record](PAUSED.md) for saved commits, unresolved findings and local preservation.
+
+At pause: 01–05 integrated; 06 saved as WIP at `76e0df6`; 09 committed at `d89c9fa` but not independently reviewed/merged. 07/08 not started and 10 not accepted. S0 is incomplete.
+
 ## Scope and completion
 
 Implement tickets 01–10 on integration branch `feat/s0-local-admission`. Follow the existing module SPECs and ticket acceptance criteria. Each ticket needs a commit, executed checks, validation evidence, an Answer, and status `resolved`. Finish with integrated runtime/browser verification and review. No push or production deployment.
@@ -61,5 +67,12 @@ Each implementer gets a fresh context, branch, and worktree under `.worktrees/`,
 - Trace a canceled task and a deadline-failed task through request, admission, claim, acquire stage, and terminal logs. Check structured fields and sensitive values without printing credentials.
 - Cross-reference the S0 subscenarios of AT-02/04/05/19/20/21/22 to actual test names, executed commands, screenshots, and query-plan evidence. Keep AT-06/08 and full AT-22 explicitly outside this slice.
 - Local GitHub Actions equivalents are required; remote workflow execution remains unverified without an authorized push.
-- Parent review finding for05: the serializable race proves whole-transaction retry, but appending a constant UUID is not evidence of retained business identity. Correct the test or narrow its claim before integration.
+- Ticket05 review finding resolved before pause: `cbc9852` removed the constant-UUID assertion and added public HTTP retry identity regressions for real PostgreSQL `40001`/`40P01`. Merger reported 276 backend tests passed and merged at `e126ae3`; no additional implementation or merge was started after the pause instruction.
+- Parent early review of06: verify T2 and terminal slot release start with an instance UPDATE lock; checkpoint/heartbeat can use SHARE. Ensure failed-task error_json includes all fields required by TaskError, so the public failed snapshot remains readable. These are draft findings to recheck against the final implementation.
 - Runtime bind mounts point into02/03worktrees. Relocate retained runtime files or stop only task-created stacks before final worktree cleanup; never delete unrelated volumes or untracked user work.
+
+### Planned07/08 ownership after06
+
+-07 owns cancellation HTTP/UI, deadline/terminal cleanup, waiting promotion, the control-loop assembly, and any shared terminalization primitive in task_execution.08 owns a separate recovery module and fault tests for expired leases, dispatch generation repair, and exhaustion. Neither edits the other's production modules.
+-08 exposes a single recovery scan entrypoint; the parent integrates its call into the control tick after both branches are ready. Shared schema/model changes must be coordinated before either worker edits them.
+- Terminalization must use the instance UPDATE lock from the start, atomically close attempts/outboxes and release execution reservations, preserve terminal monotonicity, and keep public error snapshots valid. Recovery must retain the original task identity/deadline and invalidate the old fence.
