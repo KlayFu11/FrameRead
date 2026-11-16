@@ -1,0 +1,20 @@
+{
+  "method": "Read-only Redis HMAC source-key comparison against Docker network and Desktop candidates",
+  "observed_source": "172.20.0.1",
+  "source_counter": 5,
+  "global_counter": 5,
+  "source_key_count": 1,
+  "spoofed_source_keys": 0,
+  "logs": {
+    "json_records_checked": {
+      "api-admin": 9,
+      "gateway": 23
+    },
+    "login_events": [
+      "login_failed",
+      "login_rate_limited",
+      "login_succeeded"
+    ],
+    "allowlist": "passed"
+  }
+}

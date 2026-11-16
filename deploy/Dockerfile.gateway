@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+# 官方 Node 镜像 manifest 已核实；pnpm 与依赖分别由 packageManager 和 lockfile 固定。
+FROM node:24.11.0-alpine@sha256:f36fed0b2129a8492535e2853c64fbdbd2d29dc1219ee3217023ca48aebd3787 AS frontend-build
+WORKDIR /app
+RUN corepack enable
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+COPY frontend/index.html frontend/tsconfig.json frontend/vite.config.ts ./
+COPY frontend/src ./src
+RUN pnpm build
+
+FROM nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+COPY deploy/gateway/nginx.conf /etc/frameread/nginx.conf
+COPY --from=frontend-build /app/dist /usr/share/nginx/html/manage
+USER 101:101
+CMD ["nginx", "-c", "/etc/frameread/nginx.conf", "-g", "daemon off;"]

@@ -3,6 +3,7 @@ import contextlib
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Request
@@ -12,6 +13,8 @@ from redis.asyncio import Redis
 
 from frameread.api.errors import install_error_handling
 from frameread.api.runtime import AdminRuntime
+from frameread.api.sessions import AdminBoundaryMiddleware
+from frameread.api.sessions import router as session_router
 from frameread.db.bootstrap import parse_root_key
 from frameread.db.engine import make_async_engine
 from frameread.observability.logging import configure_logging
@@ -47,7 +50,12 @@ def build_runtime(config: AppConfig, secrets: AdminSecrets) -> AdminRuntime:
         socket_timeout=_REDIS_TIMEOUT_SECONDS,
         socket_connect_timeout=_REDIS_TIMEOUT_SECONDS,
     )
-    return AdminRuntime(engine=engine, redis=redis, root_key=parse_root_key(secrets.secret("master_key_file")))
+    return AdminRuntime(
+        engine=engine,
+        redis=redis,
+        root_key=parse_root_key(secrets.secret("master_key_file")),
+        password_hash_path=Path(secrets.admin_password_hash_file),
+    )
 
 
 def create_app() -> FastAPI:
@@ -55,6 +63,7 @@ def create_app() -> FastAPI:
     configure_logging()
     config = load_config()
     secrets = load_secrets(AdminSecrets)
+    secrets.secret("admin_password_hash_file")
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -80,7 +89,9 @@ def create_app() -> FastAPI:
 def build_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None) -> FastAPI:
     """装配路由与错误处理；不加载配置，OpenAPI 导出直接使用。"""
     app = FastAPI(title="FrameRead Admin API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.add_middleware(AdminBoundaryMiddleware)
     install_error_handling(app)
+    app.include_router(session_router)
 
     # 内部健康接口：只在容器内网可达，gateway 不转发（R3）
     @app.get("/health/live", include_in_schema=False)

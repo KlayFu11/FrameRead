@@ -2,6 +2,8 @@ import asyncio
 import hmac
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
 from redis.asyncio import Redis
@@ -27,6 +29,9 @@ from frameread.security.crypto import root_key_check
 STARTUP_RETRY_SECONDS = 2.0
 _log = structlog.get_logger()
 
+if TYPE_CHECKING:
+    from frameread.api.sessions import SessionSecurity
+
 
 @dataclass
 class AdminRuntime:
@@ -37,6 +42,8 @@ class AdminRuntime:
     root_key: bytes
     health: HealthRegistry = field(default_factory=HealthRegistry)
     identity: RuntimeIdentity | None = None
+    password_hash_path: Path | None = None
+    session_security: "SessionSecurity | None" = None
 
     def __post_init__(self) -> None:
         self.health.register_probe("postgres", self._probe_postgres, Severity.CRITICAL)
@@ -55,6 +62,10 @@ class AdminRuntime:
             _log.warning("startup_not_ready")
             return False
         _log.info("startup_verified", epoch=str(self.identity.instance_epoch))
+        if self.password_hash_path is not None:
+            from frameread.api.sessions import SessionSecurity
+
+            self.session_security = SessionSecurity.load(self.password_hash_path)
         return True
 
     async def establish_forever(self) -> None:

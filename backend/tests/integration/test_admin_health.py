@@ -1,7 +1,9 @@
 import os
+import secrets
 from pathlib import Path
 
 import pytest
+from argon2 import PasswordHasher
 from fastapi import Depends
 from fastapi.testclient import TestClient
 
@@ -30,6 +32,7 @@ def admin_env(tmp_path: Path, monkeypatch):
             "DATABASE_DSN_FILE": dsn,
             "REDIS_URL_FILE": redis_url or _required_env(REDIS_URL_ENV),
             "MASTER_KEY_FILE": root_key.hex(),
+            "ADMIN_PASSWORD_HASH_FILE": PasswordHasher().hash(secrets.token_urlsafe(24)),
         }
         for env, value in files.items():
             path = tmp_path / env.lower()
@@ -100,7 +103,7 @@ def test_wrong_root_key_fails_startup(migrated_db, admin_env):
         pass
 
 
-@pytest.mark.parametrize("missing", ["MASTER_KEY_FILE", "DATABASE_DSN_FILE"])
+@pytest.mark.parametrize("missing", ["MASTER_KEY_FILE", "DATABASE_DSN_FILE", "ADMIN_PASSWORD_HASH_FILE"])
 def test_missing_secret_env_fails_before_serving(fresh_db, admin_env, monkeypatch, missing):
     admin_env(fresh_db.app_dsn)
     monkeypatch.delenv(missing)

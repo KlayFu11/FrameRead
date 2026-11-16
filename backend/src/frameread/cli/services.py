@@ -11,6 +11,7 @@ from alembic.util.exc import CommandError
 from sqlalchemy.exc import DBAPIError
 
 from frameread.api.admin_app import build_app
+from frameread.api.sessions import cleanup_expired_sessions
 from frameread.db.bootstrap import (
     FatalStartupError,
     StartupError,
@@ -19,7 +20,7 @@ from frameread.db.bootstrap import (
     verify_startup,
 )
 from frameread.db.engine import make_engine
-from frameread.db.uow import sqlstate_of
+from frameread.db.uow import run_transaction, sqlstate_of
 from frameread.observability.liveness import DEFAULT_HEARTBEAT_DIR, HEARTBEAT_DIR_ENV, touch_heartbeat
 from frameread.observability.logging import configure_logging
 from frameread.settings import (
@@ -98,6 +99,7 @@ def _run_service(name: str, pool_size: int) -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     verified = False
+    next_session_cleanup = 0.0
     try:
         while not stopping:
             touch_heartbeat(heartbeat_dir, name)
@@ -112,6 +114,10 @@ def _run_service(name: str, pool_size: int) -> None:
                     raise typer.Exit(1) from None
                 except (StartupError, DBAPIError, OSError):
                     _log.warning("startup_not_ready", worker_id=name)
+            if verified and name == "control" and time.monotonic() >= next_session_cleanup:
+                run_transaction(engine, cleanup_expired_sessions)
+                next_session_cleanup = time.monotonic() + 24 * 60 * 60
+                _log.info("sessions_cleaned", worker_id=name)
             time.sleep(_TICK_SECONDS)
     finally:
         engine.dispose()
@@ -125,3 +131,20 @@ def worker_run() -> None:
 @control_app.command("run")
 def control_run() -> None:
     _run_service("control", CONTROL_CONNECTIONS)
+
+
+@control_app.command("cleanup-sessions")
+def control_cleanup_sessions() -> None:
+    configure_logging()
+    config = load_config()
+    secrets = load_secrets(ServiceSecrets)
+    engine = make_engine(
+        secrets.secret("database_dsn_file"), pool_size=1, pool_timeout=config.runtime.pool_timeout_seconds
+    )
+    try:
+        with engine.connect() as conn:
+            verify_startup(conn, parse_root_key(secrets.secret("master_key_file")))
+        run_transaction(engine, cleanup_expired_sessions)
+    finally:
+        engine.dispose()
+    _log.info("sessions_cleaned")

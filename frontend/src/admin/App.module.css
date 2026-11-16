@@ -1,0 +1,38 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+}
+.header {
+  min-height: 88px;
+  padding: 24px clamp(24px, 6vw, 88px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 14px; font-size: 25px; font-weight: 750; letter-spacing: -1px; color: var(--ink); text-decoration: none; }
+.brandMark { width: 20px; height: 27px; border: 2px solid var(--accent); border-radius: 3px; box-shadow: 5px -4px 0 -2px var(--surface), 5px -4px 0 0 var(--accent); }
+.headerLabel { color: var(--muted); font-size: 14px; }
+.main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 64px 24px; }
+.login, .shell { width: min(100%, 430px); }
+.intro { margin-bottom: 38px; }
+.intro h1, .shell h1 { font-size: clamp(27px, 4vw, 34px); line-height: 1.35; font-weight: 650; margin: 0 0 16px; letter-spacing: -1px; }
+.intro p, .shell > p { color: var(--muted); line-height: 1.75; margin: 0; }
+.form { display: flex; flex-direction: column; gap: 12px; }
+.form label { font-size: 14px; font-weight: 600; }
+.form input { width: 100%; min-height: 52px; padding: 12px 15px; border: 1px solid #aebdce; border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+.primary, .secondary { min-height: 48px; border-radius: 6px; padding: 12px 20px; font: inherit; font-weight: 600; cursor: pointer; }
+.primary { margin-top: 10px; background: var(--accent); color: white; border: 1px solid var(--accent); }
+.primary:hover { background: #244d84; }
+.secondary { margin-top: 30px; background: var(--surface); color: var(--ink); border: 1px solid #aebdce; }
+.secondary:hover { background: #e6edf5; }
+.primary:disabled, .secondary:disabled { cursor: wait; opacity: .65; }
+.sessionStatus { display: flex; align-items: center; gap: 9px; color: #28634d; margin-bottom: 22px; font-size: 14px; }
+.sessionStatus span { width: 8px; height: 8px; border-radius: 50%; background: #388162; }
+.shell .expiry { margin-top: 12px; font-size: 13px; }
+.footer { padding: 24px; text-align: center; color: var(--muted); font-size: 12px; }
+@media (max-width: 520px) { .header { min-height: 76px; } .headerLabel { display: none; } .main { align-items: flex-start; padding-top: 72px; } }

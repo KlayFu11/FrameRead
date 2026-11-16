@@ -1,0 +1,12 @@
+# 本地 Vite 调试配置；生产 Compose 默认只挂载 settings.toml。
+[admin]
+origins = ["http://127.0.0.1:8080", "http://localhost:8080", "http://localhost:5173"]
+
+[deployment]
+api_admin_instances = 1
+worker_concurrency = 2
+control_instances = 1
+
+[policy.pools.video]
+execution_slots = 2
+waiting_slots = 4

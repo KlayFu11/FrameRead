@@ -47,3 +47,14 @@ instance_state = Table(
     Column("last_backup_id", Uuid, nullable=True),
     Column("root_key_check", LargeBinary, nullable=False),
 )
+
+admin_sessions = Table(
+    "admin_sessions",
+    metadata,
+    *common_columns(),
+    Column("token_hash", LargeBinary, nullable=False, unique=True),
+    Column("csrf_hash", LargeBinary, nullable=False),
+    Column("credential_generation", Text, nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False),
+)

@@ -1,0 +1,94 @@
+{
+  "tool": "Local Playwright, isolated Chromium context",
+  "browserVersion": "156.0.8078.4",
+  "viewports": [
+    {
+      "width": 1280,
+      "height": 900
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "checks": [
+    "unauthenticated deep-link redirect",
+    "single password input",
+    "wrong-password error",
+    "login201 and original-path return",
+    "valid-session direct-login redirect",
+    "mobile overflow",
+    "CSRF403 refresh notice without write replay",
+    "logout204 and reload remains logged out",
+    "sixth incorrect password is429 with wait and requestID",
+    "no JavaScript page errors"
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/session",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/session",
+      "status": 403
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/session",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/admin/session",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/session",
+      "status": 429
+    }
+  ],
+  "pageErrors": []
+}

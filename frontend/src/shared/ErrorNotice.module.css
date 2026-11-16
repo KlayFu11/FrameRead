@@ -1,0 +1,7 @@
+.notice { margin-top: 24px; padding: 16px; border-left: 3px solid #b75c52; background: #fff4f1; color: #773b35; font-size: 14px; overflow-wrap: anywhere; }
+.notice p { margin: 0 0 8px; line-height: 1.6; color: inherit; }
+.notice p:last-child { margin-bottom: 0; }
+.request { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 14px; }
+.request span { font-size: 12px; }
+.request code { font-size: 12px; user-select: all; }
+.request button { border: 0; padding: 4px 0; background: transparent; color: #773b35; text-decoration: underline; cursor: pointer; font-size: 12px; }

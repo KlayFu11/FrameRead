@@ -1,8 +1,9 @@
 import os
 import tomllib
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from frameread.domain.policy import ResourcePolicy
@@ -34,6 +35,33 @@ class DeploymentScale(_Section):
 class AdminConfig(_Section):
     origins: list[str] = Field(min_length=1)
     share_base_url: str | None = None
+
+    @field_validator("origins")
+    @classmethod
+    def validate_origins(cls, values: list[str]) -> list[str]:
+        for value in values:
+            try:
+                parts = urlsplit(value)
+                port = parts.port
+            except ValueError:
+                raise ValueError("admin.origins 格式错误") from None
+            if (
+                parts.scheme not in ("http", "https")
+                or not parts.hostname
+                or parts.username is not None
+                or parts.password is not None
+                or parts.path
+                or parts.query
+                or parts.fragment
+                or parts.netloc != parts.netloc.lower()
+                or port == 0
+            ):
+                raise ValueError("admin.origins 必须是规范的精确 Origin")
+            if parts.scheme == "http" and parts.hostname not in ("localhost", "127.0.0.1", "::1"):
+                raise ValueError("非 loopback 管理 Origin 必须使用 https")
+        if len(set(values)) != len(values):
+            raise ValueError("admin.origins 不得重复")
+        return values
 
 
 class RuntimeConfig(_Section):
@@ -100,7 +128,9 @@ class ServiceSecrets(_SecretFiles):
 
 
 class AdminSecrets(ServiceSecrets):
-    """api-admin：在 ServiceSecrets 之上，Ticket 02 加入管理员密码 hash。"""
+    """api-admin 独占管理员密码 hash secret。"""
+
+    admin_password_hash_file: str
 
 
 class MigrateSecrets(_SecretFiles):
