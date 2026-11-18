@@ -1,91 +1,97 @@
-# FrameRead Java 完整系统模块地图
+# FrameRead V1 模块与交付路线图
 
-本地图描述当前完整系统的模块边界、数据与状态责任、依赖方向和纵向集成契约，不记录 Ticket、开发进度或完成状态。产品范围以 [PRD.v3.md](../../docs/prototype/PRD.v3.md) 为准，技术基线以 [SPEC.md §3](../../docs/prototype/SPEC.md#spec-architecture) 及其相关章节为准。
+Label: wayfinder:map
 
-材料采用、持久化和复用遵循 [SPEC 材料契约 Q1～Q6](../../docs/prototype/SPEC.md#spec-scope)。
+## Destination
 
-## 1. 系统边界与依赖方向
+本地图维护模块职责、权威状态、逻辑依赖及 Wayfinder Decision Ticket 追溯。正式 S0～S12 编号、范围、真实阻塞、需求覆盖和阶段执行说明统一保存在[正式交付计划](delivery-plan.md)，本地图只保留入口。
 
-FrameRead 采用 Java 21、Spring Boot 3.5.9 模块化单体。HTTP、分析消费者、媒体异步操作和 SSE 在同一应用边界内；Vue 3/Vite Web 与 MV3 浏览器扩展是两个 HTTP 客户端。
+## Notes
 
-基础设施职责如下：
+[PRD V3](../../docs/prototype/PRD.v3.md) 定义 R3 和 A3，[全局 SPEC 1.0.0](../../docs/prototype/SPEC.md) 定义技术契约，[术语表](../../GLOSSARY.md)与 [ADR](../../docs/adr/) 给出领域名称和正式决定。[设计基线审查](baseline-audit.md)提供源码差距和测试接缝；源码存在不表示运行验收通过。
 
-| 设施 | 责任 |
-| --- | --- |
-| MySQL、MyBatis-Plus、Flyway | 业务实体、归属、来源、分析过程和可查询状态的持久化 |
-| MinIO | 原始媒体、字幕原件和其他文件资源 |
-| Redis、Redisson | 活跃状态、通知与并发协调。执行代次与持久期限由 Checkpoint 记录 |
-| RocketMQ | 分析及相关动作的异步消息 |
-| Qdrant | 从有效分块和 Embedding 派生的向量检索索引 |
-| FFmpeg、ASR、Tesseract OCR | 媒体处理、转写和画面文字提取 |
-| LangChain4j 及模型服务 | Agent、结构化生成和模型调用 |
-| Compose | 本地中间件编排、配置和诊断入口 |
+已冻结的关键边界在 [Q1～Q6](../../docs/prototype/SPEC.md#spec-scope)、[分析作用域](../../docs/prototype/SPEC.md#spec-identity)、[数据与删除](../../docs/prototype/SPEC.md#spec-data)和[受理与恢复](../../docs/prototype/SPEC.md#spec-execution)。每个媒体首次固定采用材料，重新导入得到新媒体。分析按媒体、规范化目标、实际模式寻址，受理与执行代次以持久 Checkpoint 为据。报告结果与媒体摘要分写。片外补充仅用于追问，未知模型用量在有限重试中保持未知。[ADR 0002](../../docs/adr/0002-keep-background-knowledge-in-qa.md) · [ADR 0003](../../docs/adr/0003-retry-an-unconfirmed-model-call.md) · [ADR 0004](../../docs/adr/0004-bound-video-task-admission.md)
 
-依赖方向保持单向：客户端进入 HTTP/SSE 和授权层；业务协调调用媒体、来源、上下文、Agent、检索和持久化适配；消息、锁、资源和模型由适配层提供能力。来源适配不启动分析，检索不回调 Agent，媒体删除不回调下载或生成。
+开始模块设计或实施前读取[交付计划的当前阶段与真实依赖](delivery-plan.md#delivery-dependencies)，按[项目 AI Coding 工作流](../../AGENTS.md#ai-coding工作流)推进。只对当前切片未决设计处理 [Decision Ticket](issues/)，已冻结契约直接复用。
 
-## 2. 现行模块划分
+<a id="module-map"></a>
+### 模块责任矩阵
 
-| 模块 | 模块接口与权威数据 | 直接依赖 | 状态、失败与恢复责任 |
-| --- | --- | --- | --- |
-| 身份与授权 | 注册、登录、退出、会话、角色判定及用户归属 | MySQL、Redis | 校验会话和管理员权限；拒绝过期会话、跨用户媒体访问及普通用户管理入口访问 |
-| 媒体接入与生命周期 | 上传或导入到已保存媒体；媒体归属、来源记录、文件清单、播放、删除 | 身份、来源适配、持久化与资源 | 管理普通/分片上传、完成回执、播放授权、删除事务、并发删除和资源清理 |
-| 平台来源适配 | URL 到规范单视频、平台身份、下载描述和字幕候选 | 网络出口、平台工具 | 只处理目标单视频，按稳定业务类别报告解析、下载和字幕异常 |
-| 固定材料与 VideoContext | 已授权媒体和分析意图到固定材料、来源指纹、VideoContext；保存原文、区间、ASR/OCR/帧关联 | 来源、FFmpeg、ASR、OCR、媒体资源 | 负责候选选择、同源校验、复用资格、首次采用并发和旧材料恢复 |
-| 长视频与证据检索 | 已确认上下文到分块、摘要、Embedding、混合检索和真实时间证据 | VideoContext、Qdrant、模型、媒体资源 | 绑定媒体、输入指纹和派生规则；检索失败按现行降级，禁止跨来源命中 |
-| 四模式 Agent | 固定输入、规范化目标、实际模式和执行上下文到 AnalysisResult | 检索、模型、Checkpoint 接口 | 协调 Planner、Executor、Critic、工具、结构校验、预算、追问和警告完成 |
-| 分析应用与异步协调 | 提交、修订、重放、分析作用域、受理代次、报告保存、状态和 SSE | 身份、媒体、VideoContext、Agent、RocketMQ、Redis/Redisson、Checkpoint | 判定活动工作和可复用结果；控制确认、租约、代次、过时写回、恢复和失败台账 |
-| 持久化与资源适配 | MySQL、Checkpoint、MinIO、Redis、Qdrant 的读写、事务参与及清理 | 数据库、存储设施和中间件客户端 | 在业务模块给出的归属、来源、代次与提交条件内执行持久化和资源操作 |
-| Web 与浏览器扩展 | 消费媒体、分析、状态、证据、报告、追问、导出和错误协议 | HTTP/SSE、身份、媒体、分析应用 | 只负责展示与交互；断线、刷新和重开按同一作用域回查，不自动新建分析 |
-| 工程与管理 | 配置、Compose、健康诊断、离线评估、失败查询与管理员重放 | 全部基础设施和业务入口 | 提供运行诊断、依赖故障证据和受权重放入口，不绕过分析协调直接改状态 |
+沿用 [SPEC §3](../../docs/prototype/SPEC.md#spec-architecture) 的 10 个模块。Interface 一栏列调用方需要知道的输入、结果和约束。各模块的当前入口及测试见[源码接缝](baseline-audit.md#source-seams)，R3 与 A3 的完整要求见 [SPEC §11](../../docs/prototype/SPEC.md#spec-traceability)。
 
-## 3. 数据与状态责任
+| 模块 | 主责与 Interface | 权威状态、提交与职责交接 | 直接依赖 | 主要 R3 / A3 与规格 | 源码现状和后续 Grill |
+| --- | --- | --- | --- | --- | --- |
+| 身份与授权 | 注册、登录、退出、校验 Bearer、判断管理员。调用者取得已确认的用户身份及权限。 | MySQL 用户与角色，Redis 会话。具体媒体归属从媒体模块取得，管理入口另校验角色。 | 持久化适配 | R3-01、R3-12 / A3-01、A3-19。[§4](../../docs/prototype/SPEC.md#spec-identity) · [§8](../../docs/prototype/SPEC.md#spec-api) | 已有入口。复核两账号隔离、过期会话及资源授权，沿用冻结权限。 |
+| 媒体接入与生命周期 | 普通/分片上传或导入得到已保存媒体。提供归属、列表、播放、删除及独立转写、音频导出入口。 | MySQL 媒体行拥有归属、导入来源、`uploadId` 绑定、文件清单及删除标记，MinIO 持有视频/分片。文件准备在事务外，发布与删除共用媒体行条件。采用材料交给上下文，独立文字提取只更新兼容投影。 | 身份、来源适配、持久化、媒体工具 | R3-01～R3-03、R3-11、R3-12 / A3-01～A3-06、A3-18、A3-19。[§6](../../docs/prototype/SPEC.md#spec-data) | 已有上传/管理。P0 扩展来源发布，修复完成回执与删除竞争。先 Grill 共用媒体契约。 |
+| 来源适配 | URL 到规范单视频和下载描述。已确认成员到可核对的字幕候选及原件。提供稳定错误和获取期限。 | 对成员判定负责，导入记录由媒体写入。字幕候选交给上下文确认与采用，分析由独立入口发起。 | 平台、专用 HTTP 客户端、受控 yt-dlp 及媒体工具出口 | R3-03、R3-04、R3-12 / A3-03～A3-08、A3-18、A3-19。[§5.1](../../docs/prototype/SPEC.md#spec-platform) · [§8](../../docs/prototype/SPEC.md#spec-api) | 已有通用工具路径。单视频、分 P、同成员字幕和出网属 P0 增量。Grill 来源/下载描述与部署交接。 |
+| 固定材料与 VideoContext | 有效媒体与建立/恢复意图到固定材料、实际来源指纹和 VideoContext。统一选源、ASR 回退、OCR/帧、时间与材料匹配。 | 媒体行的采用信息、Checkpoint 的固定材料和 context、MinIO 原件/真实帧。媒体级协调后在同一短事务发布。跨媒体采用核对同用户及真实材料并本地化引用。结果适用性由分析协调判断。 | 有效媒体、来源适配、FFmpeg/ASR/OCR、持久化 | R3-04～R3-06、R3-09 / A3-07～A3-11、A3-14、A3-15。[§5](../../docs/prototype/SPEC.md#spec-source) | 已有 ASR 与 OCR/帧。固定和复制属 P0 增量。Grill 谁准备资源、谁提交，以及恢复/缺失的调用契约。 |
+| 长视频与检索 | 已确认上下文与查询到兼容分块、摘要及可定位证据。支持混合检索和同源降级。 | 媒体级 chunks Checkpoint、Qdrant 派生向量和已发布版本，按媒体、指纹和派生版本隔离。通过固定材料 Interface 取得身份，供 Agent 和证据查询调用。 | VideoContext、模型/Embedding、持久化 | R3-06、R3-09 / A3-11、A3-13～A3-15。[§5.2–5.3](../../docs/prototype/SPEC.md#spec-source) | 已有检索。待补指纹/版本隔离和字幕时间证据。Grill 固定输入到索引的发布及降级。 |
+| 四模式 Agent | 已固定输入、规范目标、实际模式和执行条件到 `AnalysisResult` 或明确失败。负责 AUTO 路由、Planner/Executor/Critic、取证、预算和追问生成。 | 产生计划、过程和结构结果，经受控 Checkpoint 写入。作用域终态、保存和对外报告由分析协调负责。 | 检索、模型、受控的过程持久化 Interface | R3-06～R3-10 / A3-09、A3-12、A3-13、A3-15、A3-17。[§7](../../docs/prototype/SPEC.md#spec-execution) · [§9](../../docs/prototype/SPEC.md#spec-delivery) | 四模式及校验入口已定位。Grill 字幕证据、受控过程写入和追问隔离。 |
+| 分析应用与异步协调 | 已授权提交、修订、重放到受理/复用/拒绝，再提供回查、SSE、报告、追问及反馈。 | 目标级持久 Checkpoint 拥有当前工作条件、代次、过程、结果和完成。MySQL 持有失败台账及独立媒体摘要。Redis 活跃状态、通知、对话和反馈按协议使用。统一管理写回、恢复、重放并委托 Agent 和检索。 | 身份、媒体、VideoContext、Agent、检索、持久化、RocketMQ/Redisson | R3-07～R3-12 / A3-12～A3-17、A3-19、A3-20。[§4](../../docs/prototype/SPEC.md#spec-identity) · [§7](../../docs/prototype/SPEC.md#spec-execution) | 已有分析、消息和 SSE。兼容旧键与代次、安全回读和恢复待补。待确认的公共状态由本地图下的 Decision Ticket 处理。 |
+| 持久化与资源适配 | 带媒体、指纹与代次条件的读写、资源存取、缓存与清理。执行业务所有者给出的提交条件。 | MySQL/Flyway、MinIO、Redis 和 Qdrant 按上游权威归属保存或派生数据。DB 提交后发布外部投影，业务模块判断结果、采用和复用。 | 数据库、对象存储、缓存、向量设施 | R3-02、R3-05、R3-06、R3-08、R3-10、R3-12 / A3-02、A3-14、A3-17～A3-19。[§6](../../docs/prototype/SPEC.md#spec-data) | 已有存储操作。迁移、条件写入与外部清理为兼容修复。随媒体/上下文/协调 Grill 接缝。 |
+| Web 与扩展 | 共用 HTTP/SSE 协议。Web 手动启动，扩展导入后提交。按实际来源展示、定位、查看、重开和导出。 | 本地仅留交互状态和回查需要的作用域，业务状态读取后端。Web 承接上传、追问和导出。扩展仅在确认同视频、同 P 且可解析时码时跳转。 | 身份、媒体、分析协调的公共协议 | R3-02、R3-03、R3-06、R3-08～R3-11、R3-13 / A3-06、A3-13、A3-15、A3-16、A3-18、A3-20、A3-21。[§8](../../docs/prototype/SPEC.md#spec-api) · [§9](../../docs/prototype/SPEC.md#spec-delivery) | 已有操作入口。来源提示、错误区分和重开兼容随切片验证。A3-21 等设计文件。 |
+| 工程与管理 | 复现启动、配置及诊断、离线评估、管理员核对失败和发起重放。 | 配置、启动/评估记录、可核对的运行证据。管理入口校验角色后委托协调，失败台账及工作代次归分析协调。 | 身份、协调、工程设施与各验收入口 | R3-01、R3-10～R3-12、R3-14 / A3-01、A3-17～A3-20、A3-22。[§8.3](../../docs/prototype/SPEC.md#spec-network) · [§12](../../docs/prototype/SPEC.md#spec-verification) | Compose、管理、评估与 CI 已定位。随来源 Grill 出网交接，实际运行与故障仍待验收。 |
 
-| 数据或状态 | 权威责任模块 | 关联边界 |
-| --- | --- | --- |
-| 用户、会话、角色 | 身份与授权 | 所有媒体、来源、报告和资源访问先经过用户归属判断 |
-| 媒体、导入状态、文件清单、删除状态 | 媒体接入与生命周期 | 媒体删除必须通过持久化与资源接口，不能由分析或来源模块直接清理 |
-| 平台身份、规范来源、字幕候选 | 平台来源适配 | 来源适配不决定分析结果；候选需交由 VideoContext 固定 |
-| 固定字幕、转写、OCR、关键帧、时间区间和来源指纹 | 固定材料与 VideoContext | 首次采用后供分析、检索和追问共同使用，跨媒体复用需复制并本地化引用 |
-| 分块、摘要、Embedding、检索索引 | 长视频与证据检索 | 绑定媒体、有效输入指纹和派生规则，不能以旧来源提示替换数据库事实 |
-| 目标、实际模式、分析作用域 | 分析应用与异步协调 | 作用域为媒体标识、规范化目标和实际模式，由媒体归属约束读写 |
-| 计划、执行、Critic、AnalysisResult、报告 | Agent 与分析应用 | Agent 产生结构化结果，分析应用负责保存、读取、修订和对外状态投影 |
-| 当前阶段、结果、固定输入引用、恢复过程 | 目标级 Checkpoint | 保存受理代次和执行代次相关事实；不是独立跨作用域任务实体 |
-| 活跃状态、通知与并发锁 | Redis/Redisson | 消息、锁和 SSE 按持久记录中的受理代次、执行代次及期限核对有效性 |
-| 失败记录、重放代次和预算/用量诊断 | 分析应用与工程管理 | 管理员重放必须复用分析协调入口；未知用量不得按零用量处理 |
+### 模块依赖
 
-## 4. 提交流程与跨模块集成契约
+实线表示已确认的逻辑依赖，方向为调用方或数据消费者到提供方。虚线标记待确认状态的消费契约。MQ 消费回调进入同一分析协调模块。当前代码与本图的差异见[源码接缝](baseline-audit.md#source-seams)。
 
-一次分析提交的业务数据流为：
+```mermaid
+flowchart LR
+    Web["Web 与扩展"] --> Auth["身份与授权"]
+    Web --> Media["媒体接入与生命周期"]
+    Web --> Analysis["分析应用与异步协调"]
+    Web -. 待确认期间的状态与动作 .-> Analysis
+    Ops["工程与管理"] --> Auth
+    Ops -->|授权后重放| Analysis
+    Media --> Source["来源适配"]
+    Analysis -->|归属与存活| Media
+    Analysis -->|建立或恢复| Context["固定材料与 VideoContext"]
+    Analysis --> Agent["四模式 Agent"]
+    Analysis -->|查询证据| Search["长视频与检索"]
+    Analysis -->|投递| MQ["RocketMQ"]
+    Context -->|字幕候选与原件| Source
+    Agent -->|取证| Search
+    Search -->|固定输入与绑定| Context
+    Auth --> Store["持久化与资源适配"]
+    Media --> Store
+    Context --> Store
+    Analysis --> Store
+    Agent -->|受控过程读写| Store
+    Search --> Store
+```
 
-1. 媒体接入确认权限，保存上传文件或经来源适配核实的单视频及其来源。Web 进入分析工作区，扩展可串接分析提交。
-2. 分析协调按媒体标识、规范化目标和实际模式确定作用域，检查活动工作、适用结果和修订条件。
-3. 需派发时在事务内持久化作用域的受理代次、动作和期限，再在事务外向 RocketMQ 投递。
-4. 消费者校验消息和受理记录，取得执行代次及有界租约。VideoContext 建立或恢复固定材料并发布实际来源指纹。首次分析可以在尚未建立上下文时受理。
-5. 在材料与作用域相符且资源可用时复用结果，或由 Agent 和检索生成结构化报告。写回事务校验媒体有效性、固定来源及两个代次，提交结果后分步更新摘要、缓存和通知。
-6. 客户端通过状态查询和 SSE 读取同一作用域的阶段、报告与警告。断线或刷新后回查原作用域。
+平台和下载工具由来源适配调用，FFmpeg、ASR、OCR 由媒体处理和上下文使用。Agent 和检索各经适配调用外部模型。按媒体行统一控制采用、向量发布、Checkpoint、摘要和删除。外部调用在事务外，写回再核对来源与适用代次。[SPEC §3](../../docs/prototype/SPEC.md#spec-architecture) · [§6.2](../../docs/prototype/SPEC.md#spec-commit) · [§7.1](../../docs/prototype/SPEC.md#spec-admission)
 
-跨模块合同：
+<a id="delivery-slices"></a>
+### 正式交付计划入口
 
-- 来源和固定材料先于 Agent；Agent 不自行猜测来源或绕过 VideoContext。
-- 分析协调是提交、修订、重放、状态和代次的唯一业务入口；客户端、消息消费者和管理入口不直接改结果状态。
-- MySQL/Checkpoint 是持久事实，Redis、SSE 和单条消息只提供协调或通知，不单独证明完成。
-- 同一作用域的普通重复提交先检查活动工作，再检查适用结果。没有可接续工作或适用结果时按 SPEC 判定是否产生新代次。修订与重放各自校验动作及恢复条件。
-- 过时消息、租约失效、媒体已删除或来源不匹配时不得写回新状态。
-- 媒体、来源、上下文、检索、报告和资源的删除或恢复必须遵守各自权威模块，不通过清空全部缓存或删除历史数据解决匹配问题。
+[正式 S0～S12 九字段交付表](delivery-plan.md#delivery-slices)是唯一阶段表。2026-11-19 从本地图迁移，编号、能力边界和依赖保持不变；版本与冻结记录见新文档。
 
-异步受理、确认、消费、写回、有限重试和管理员重放的细则见 [SPEC.md §7](../../docs/prototype/SPEC.md#spec-execution)。来源与固定材料见 [§5](../../docs/prototype/SPEC.md#spec-source)，事务与资源见 [§6](../../docs/prototype/SPEC.md#spec-data)。
+<a id="delivery-dependencies"></a>
+[真实阻塞、公共契约、运行能力门禁与并行关系](delivery-plan.md#delivery-dependencies)
 
-## 5. 纵向集成切片
+<a id="candidate-mapping"></a>
+[切片由来、10 个候选及 HEAD 中 6 个集成边界映射](delivery-plan.md#candidate-mapping)
 
-以下切片是跨模块验收边界，不是 Ticket 或进度记录。每个切片都必须沿真实输入经过客户端、业务模块、基础设施和结果读取，不能只验证单个类。
+<a id="delivery-coverage"></a>
+[R3-01～R3-14、A3-01～A3-22 阶段归属与最终验收](delivery-plan.md#delivery-coverage)
 
-| 集成切片 | 依赖链与入口 | 集成输出 | 验证锚点 |
-| --- | --- | --- | --- |
-| 身份与媒体 | 身份 → 媒体 → MySQL/MinIO/Redis | 用户隔离、普通/分片上传、媒体保存、播放和删除 | PRD A3-01、A3-02、A3-18、A3-19；SPEC R3-01/R3-02 责任 |
-| 来源与固定材料 | 媒体 → 来源适配 → VideoContext → FFmpeg/ASR/OCR/MinIO | 单视频身份、字幕候选、采用文本、固定材料、时间与来源指纹 | PRD A3-03～A3-11；SPEC §5 |
-| 分析与报告 | VideoContext → 分析协调 → Agent/检索/模型 → Checkpoint | 四模式或 AUTO 的 AnalysisResult、报告、证据和可重开结果 | PRD A3-12～A3-14；SPEC R3-07/R3-08 责任 |
-| 追问与修订 | 报告/固定材料 → 追问与检索 → Agent/Checkpoint | 区分视频证据与片外补充，反馈记录，按作用域修订 | PRD A3-15；SPEC §4、§5.4、§7.2 |
-| 异步与恢复 | 分析协调 → RocketMQ/Redisson/Checkpoint/Redis/SSE → 客户端 | 受理、排队、处理中、完成/带警告/失败、重连和管理员重放 | PRD A3-06、A3-10、A3-16、A3-17；SPEC §7 |
-| 交付与工程运行 | Web/扩展/管理 → HTTP/SSE → 全业务模块与 Compose | 导出、扩展串接、失败管理、启动诊断、测试和性能证据 | PRD A3-18～A3-22；SPEC §8、§9、§11、§12 |
+<a id="development-rules"></a>
+[切片使用方式与执行流程](delivery-plan.md#development-rules) · [项目通用执行规则](../../AGENTS.md#ai-coding工作流)
 
-切片使用正式需求与验收编号，逐项核对所涉归属、来源、作用域、代次、状态、实际结果和失败诊断。
+以上锚点保留用于旧引用；阶段内容在新文档维护。
+
+## Decisions so far
+
+本地 Decision Ticket 暂无已关闭记录。正式基线决策沿用 Notes 中的 ADR 0002～0004；交付计划冻结不构成对未决 Ticket 的裁决。
+
+- [01 · 派发待确认期间如何回查与重提分析](issues/01-analysis-dispatch-pending-projection.md)：未决，文件尚无 `Status:` 和 `Answer`，不得推定 resolved。首次阻塞 S6/C-A 的状态、SSE、重复提交和两端动作契约；不阻塞媒体/来源/上传的独立工作。
+
+## Not yet specified
+
+待确认的是 Decision Ticket 01 的公共投影；模块 SPEC 中的 DTO/列/索引、编码、对象前缀、期限/租约及清理数值仍需按切片细化。E1 的真实网络/工具等价性、真实平台与模型行为、故障时序和性能结论等运行证据尚无；D1 前端设计文件尚未提供。以上均未被本次规划冻结代替，见[审查结论](baseline-audit.md#baseline-findings)。
+
+## Out of scope
+
+逐模块详细 SPEC、实现 Tickets、功能开发、代码重构、数据迁移、全产品运行验收。产品范围沿用 [PRD V3 §2.3](../../docs/prototype/PRD.v3.md#23-功能边界)。历史 Python 与独立文章发布架构、批量导入、新增任务运行时和中间件均在本路线之外。

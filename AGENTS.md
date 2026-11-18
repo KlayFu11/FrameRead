@@ -44,10 +44,15 @@ FrameRead/
 │   ├── agents/                     # 任务跟踪与领域文档约定
 │   ├── research/                   # 工程核查与独立调研
 │   └── cite/                       # 文档写法参考
-└── .scratch/                       # 模块地图、模块 SPEC、集成契约和切片 Ticket
+└── .scratch/
+    └── frameread-v1/
+        ├── map.md                  # 模块地图与 Wayfinder 追溯
+        ├── delivery-plan.md        # 正式 S0～S12 交付计划唯一权威
+        ├── baseline-audit.md       # 源码与测试基线审查
+        └── issues/                 # Decision Ticket
 ```
 
-Web 与扩展通过 HTTP/SSE 访问后端。`controller` 与 `consumer` 调用 `service`，由服务层协调业务、持久化与外部适配。链接识别归媒体接入，下载工具调用归外部适配，字幕采用和 ASR 回退归 `VideoContext` 的构建流程。分析协调取得固定材料后调用四模式 Agent，Agent 通过检索取得同源证据，结果和恢复状态由分析协调保存。数据归属和依赖见 [SPEC 架构与模块接口](docs/prototype/SPEC.md#spec-architecture) 与[模块地图](.scratch/frameread-v1/map.md)。
+Web 与扩展通过 HTTP/SSE 访问后端。`controller` 与 `consumer` 调用 `service`，由服务层协调业务、持久化与外部适配。链接识别归媒体接入，下载工具调用归外部适配，字幕采用和 ASR 回退归 `VideoContext` 的构建流程。分析协调取得固定材料后调用四模式 Agent，Agent 通过检索取得同源证据，结果和恢复状态由分析协调保存。数据归属和依赖见 [SPEC 架构与模块接口](docs/prototype/SPEC.md#spec-architecture) 与[模块地图](.scratch/frameread-v1/map.md)；正式交付阶段、真实前置、需求覆盖和阶段使用说明以[delivery-plan.md](.scratch/frameread-v1/delivery-plan.md)为唯一权威。
 
 ## 交付标准
 
@@ -73,7 +78,14 @@ Web 与扩展通过 HTTP/SSE 访问后端。`controller` 与 `consumer` 调用 `
 
 ## AI Coding工作流
 
-- 在现有 PRD、全局技术 SPEC 和 ADR 的基础上，以**开发切片为推进单位**，对当前切片涉及的业务需求、模块职责、接口及跨模块协作执行 `/grill-with-docs`，完成需求与实现设计对齐；随后通过 `/to-spec` 将确认的设计归入对应模块的详细 SPEC，再通过 `/to-tickets` 拆分为可独立验证的端到端开发任务，最后使用 `/implement` 逐项开发、测试、审查并完成切片验收。**每个开发切片必须保留一份简短的跨模块集成契约**，明确端到端业务流程、模块调用关系、数据流转、关键状态与事务边界及整体验收条件，避免各模块 SPEC 独立正确却无法协同完成业务闭环。
+- 模块负责约束设计，切片负责组织交付，Ticket 负责具体实现，运行验收负责判定完成。
+- 流程：选择 `delivery-plan.md` 当前可推进阶段 → 确认模块契约 → `/grill-with-docs` 澄清未决设计 → `/to-spec` 固化模块 SPEC → 检查跨模块集成契约 → `/to-tickets` 拆分纵向 Ticket → `/implement` 编码、测试、审查 → 切片运行验收 → 更新进度。
+- 选择阶段时读取 `delivery-plan.md` 的真实 `Blocked by`、公共契约和当前状态；编号是默认顺序，不把推荐先后误写成强制依赖，并保留可并行路径。
+- 模块依赖和 Interface 消费关系决定 Grill 顺序，切片依赖和运行出口决定交付顺序；同一公共契约由一个权威模块维护。
+- 先阅读冻结文档、相关源码和测试接缝，以调查解决事实问题；只对影响当前切片正确性的未决契约、状态、事务、并发或测试 seam Grill。
+- 契约按当前切片分批冻结；公共面一旦满足实施前置，就可启动对应 Ticket，不等待全部模块 SPEC 或其他无关阶段。
+- 跨模块集成说明优先引用相关模块 SPEC；只有输入输出、所有权、事务、状态顺序或恢复关系仍不清楚时，才另建集成契约。
+- Ticket 按纵向用户或系统行为拆分，必须标注所属 S 阶段、R3/A3、模块契约、真实依赖及可失败、可重复的验收条件；完成时区分设计确认、契约冻结、实现、自动化测试和运行验收，并为范围或依赖变化记录版本、影响和新旧映射。
 - 设计方案时，默认给出一个能完整满足已确认需求、可实施且可验收的方案，禁止以“第一版先做，观察后再说”推迟必要决策。仅在确有取舍时并列各自可行的方案，说明适用条件和代价，禁止按“稳妥／激进”分档凑选项。
 - 仅在用户明确要求进入 Plan Mode 时切换模式。
 - 输入在负责该契约的系统边界校验一次。经过不同的权限、网络或事务边界时，由对应模块校验其负责的约束。
@@ -154,7 +166,7 @@ Web 与扩展通过 HTTP/SSE 访问后端。`controller` 与 `consumer` 调用 `
 | --- | --- | --- |
 | 确认产品能力、业务旅程或验收标准 | [PRD V3](docs/prototype/PRD.v3.md) | 产品范围、用户操作、异常行为与 A3 验收。 |
 | 设计或审查 API、数据、媒体处理、分析和异步恢复 | [全局技术 SPEC](docs/prototype/SPEC.md) · [ADR](docs/adr/) | 模块职责、事务和运行契约，按主题查架构决策。 |
-| 对齐模块、编写规格、拆分或实现 Ticket | [模块地图](.scratch/frameread-v1/map.md) · [Issue tracker](docs/agents/issue-tracker.md) · [Triage labels](docs/agents/triage-labels.md) | 模块归属、依赖、切片文件和流转状态。 |
+| 对齐模块、选择交付阶段、编写规格、拆分或实现 Ticket | [模块地图](.scratch/frameread-v1/map.md) · [正式交付计划](.scratch/frameread-v1/delivery-plan.md) · [Issue tracker](docs/agents/issue-tracker.md) · [Triage labels](docs/agents/triage-labels.md) | 模块归属、正式阶段与依赖、切片文件和流转状态。 |
 | 确认领域术语或编写 ADR | [术语表](GLOSSARY.md) · [Domain docs](docs/agents/domain.md) | 业务词汇及领域文档约定。 |
 | 核实工程实现或规划验证 | [架构审查](docs/research/FrameRead_Architecture_Audit.md) · [实施依据](docs/research/FrameRead_Feasibility_Analysis.md) · [评审模板](docs/research/FrameRead_Review_Prompt.md) | 静态证据、验证重点和审查入口。 |
 | 整理 Java 后端面试展示与工程证据 | [岗位与项目分析](docs/research/FrameRead_Job_Evidence.md) | 样本口径、工程能力映射与待验证证据。 |

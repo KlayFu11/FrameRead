@@ -8,7 +8,10 @@
 - 产品需求编号：PRD.v3.md 第 4 节的 R3-01～R3-14
 - 验收编号：[PRD.v3.md 第 9 节](PRD.v3.md#9-验收矩阵)的 A3-01～A3-22
 - 技术模块责任与验收责任：[SPEC.md §11](SPEC.md#spec-traceability)
-- 系统模块地图：[.scratch/frameread-v1/map.md](../../.scratch/frameread-v1/map.md)
+- 系统模块职责与逻辑依赖：[map.md](../../.scratch/frameread-v1/map.md#module-map)
+- 正式 S0～S12 阶段、真实前置和进度的唯一权威：[delivery-plan.md](../../.scratch/frameread-v1/delivery-plan.md#delivery-slices)
+- R3/A3 阶段归属与最终完整验收位置：[交付计划覆盖表](../../.scratch/frameread-v1/delivery-plan.md#delivery-coverage)
+- 后续开发执行规则：[项目 AGENTS.md](../../AGENTS.md#ai-coding工作流) · [阶段使用流程](../../.scratch/frameread-v1/delivery-plan.md#development-rules)
 
 ## 需求与验收定位
 

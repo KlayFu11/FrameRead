@@ -20,5 +20,6 @@ MySQL、MyBatis-Plus 和 Flyway 管理业务数据与 Checkpoint。Redis/Redisso
 
 - [产品需求 PRD V3](docs/prototype/PRD.v3.md) 规定完整产品范围、业务流程与验收标准。
 - [全局技术 SPEC](docs/prototype/SPEC.md) 规定模块职责、API、数据、异步恢复和运行契约。
-- [模块地图](.scratch/frameread-v1/map.md) 定位模块协作、实施切片与验收入口。
+- [模块地图](.scratch/frameread-v1/map.md) 定位模块职责、依赖和 Decision Ticket。
+- [正式 S0～S12 交付计划](.scratch/frameread-v1/delivery-plan.md) 是阶段编号、范围、真实前置和需求覆盖的唯一权威，包含切片由来及[阶段使用流程](.scratch/frameread-v1/delivery-plan.md#development-rules)；通用规则见 [AGENTS.md](AGENTS.md#ai-coding工作流)。
 - [领域术语](GLOSSARY.md) 统一业务对象和用户操作的含义。
