@@ -10,7 +10,7 @@
 
 VidLens 的真正业务状态在 PostgreSQL。`job_runs`、`job_attempts`、`generation_requests`、`qa_turns`、`run_events`、`task_outbox`、`idempotency`、`resource_leases`、`media_assets` 和 `storage_reservations` 共同构成可恢复的控制平面。Redis 主要承担三类职责：Asynq 的任务投递媒介、资源槽位的短期协调键、短 TTL 缓存/限流键。Redis 中没有可单独解释任务最终状态的业务真相；资源申请还要由 PostgreSQL 租约作最后裁决。
 
-核心链路是“数据库事务写入任务和 Outbox，worker 从队列领取后再次向数据库 Claim，数据库以 `execution_epoch`、`lease_owner` 和期限 fencing，结果在同一数据库控制事务中发布，SSE 再从数据库视图读取”。[internal/store/store.go:58-73](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/store.go:58) 的事务包装会取得 advisory lock `867914031`；[internal/store/execution.go:13-103](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:13) 的 Claim、[internal/store/execution.go:109-122](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:109) 的 Heartbeat、[internal/store/execution.go:187-239](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:187) 的 Fail 和 [internal/store/execution.go:294-327](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:294) 的 Step 都把执行状态变化落到 PostgreSQL。这个设计比“Redis status + worker 直接写结果”更容易解释恢复和并发边界，是 FrameRead 重构时最值得保留的部分。
+核心链路是“数据库事务写入任务和 Outbox，worker 从队列领取后再次向数据库 Claim，数据库以 `execution_epoch`、`lease_owner` 和期限 fencing，结果在同一数据库控制事务中发布，SSE 再从数据库视图读取”。[internal/store/store.go:58-73](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/store.go:58) 的事务包装会取得 advisory lock `867914031`；[internal/store/execution.go:13-103](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:13) 的 Claim、[internal/store/execution.go:109-122](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:109) 的 Heartbeat、[internal/store/execution.go:187-239](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:187) 的 Fail 和 [internal/store/execution.go:294-327](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/execution.go:294) 的 Step 都把执行状态变化落到 PostgreSQL。该设计为 FrameRead 提供跨进程恢复、租约 fencing 和结果一致性的参考，但 FrameRead 的消息、Checkpoint 和状态契约仍以当前 SPEC 为准。
 
 当前实现的主要边界如下：
 
@@ -230,9 +230,9 @@ Hub 由 [internal/httpapi/stream.go:28-145](D:/VScodeProject/FrameRead/reference
 
 1. **配置是版本化业务事实，但当前只有一个活动 runtime profile。** `SaveConfig` 在同一事务写入 `runtime_config_revisions`、更新当前指针，并给替换的模型/ASR 密钥生成新的 credential ref（`internal/store/store.go:224-256`）。这证明“任务冻结配置 revision、密钥轮换不追溯改写已接受任务”的机制存在。FrameRead 需要把该机制扩展为多个用户可命名、可选择的模型配置；不能把 VidLens 的单活动 profile 误写成多配置产品。
 2. **模型运营目录与管理后台不是 FrameRead 要继承的能力。** `/api/v1/admin/providers`、`models`、`probes`、路由与执行设置在 `internal/httpapi/server.go:65-98` 注册，前端有完整管理站。它们是原项目站点运营功能；FrameRead 只保留设置页所需的最小配置、能力检查和密钥保护。
-3. **分享撤销与图片 allowlist 已是后端事实。** 启用分享时按 request 创建 token，撤销时删除 token（`internal/store/shares.go:86-104`）；公开文章会清理内部身份并标记 `qa_available:false`（`shares.go:186-257`）。共享 frame 必须属于文章引用或已公开执行步骤，且 asset 为 ready（`shares.go:260-307`）。这满足“撤销后图片也不能继续访问”的关键边界，但 FrameRead 仍需把公开对象从 request 处理历史改成明确的 `article_version`。
+3. **分享撤销与图片 allowlist 已是后端事实。** 启用分享时按 request 创建 token，撤销时删除 token（`internal/store/shares.go:86-104`）；公开文章会清理内部身份并标记 `qa_available:false`（`shares.go:186-257`）。共享 frame 必须属于文章引用或已公开执行步骤，且 asset 为 ready（`shares.go:260-307`）。这说明公开资源、撤销和图片授权需要独立边界；FrameRead 当前产品排除公开分享和文章发布，不引入这组对象。
 4. **媒体恢复已经校验内容身份。** `FinishSource` 对 `source.restore` 比较旧 snapshot 与新 snapshot 的 `VideoHash`，不一致即返回 `MEDIA_UNAVAILABLE`（`internal/store/artifacts.go:96-110`）。这证明原系统不是仅凭 URL 恢复；FrameRead 应保留该原则，并进一步处理不同下载封装/格式导致的字节差异。
-5. **导出和文章版本是不同生命周期。** 导出从 `PublishedArticle` 读取正式内容并按格式生成 Markdown/ZIP，导出文件可过期清理（`internal/exporting/service.go:70-84,220-250,258-313`）。FrameRead 应把“正式文章版本不可变”和“导出文件可重建”分开，分享绑定前者，导出不触发重新生成。
+5. **导出和发布对象是不同生命周期。** 导出从 `PublishedArticle` 读取正式内容并按格式生成 Markdown/ZIP，导出文件可过期清理（`internal/exporting/service.go:70-84,220-250,258-313`）。这为 FrameRead 的 Markdown、转写文本和 MP3 导出提供生命周期参照；FrameRead 不创建文章版本或公开分享对象，导出不触发重新生成。
 
 ## 2026-11-09 六问覆盖矩阵
 
@@ -247,18 +247,15 @@ Hub 由 [internal/httpapi/stream.go:28-145](D:/VScodeProject/FrameRead/reference
 | 哪些数据持久化、如何管理任务执行状态 | Schema 与迁移；链路 C | [VidLens_Agent_Audit.md](VidLens_Agent_Audit.md) “预算、错误处理和恢复” | PG 保存 run/attempt/outbox/event/operation/checkpoint/result 等事实；Redis 只做投递、短期协调和可选缓存 |
 | 页面交互、数据请求和任务进度如何展示 | API/SSE；本轮 RunView 补充 | [VidLens_Media_Frontend_Audit.md](VidLens_Media_Frontend_Audit.md) 第3节 | SSE 推 view/upsert/reset，运行页组合 phase、动作、计划、画面和可用操作；断线从 GET 快照恢复 |
 
-## 对 FrameRead 重构的保留边界
+## 对 FrameRead 的参考边界
 
-FrameRead 以合理设计和完整业务为前提展示后端工程能力。以下为 Python 重设计建议，不是 VidLens 新增能力；用户已确认 VidLens 为自有项目，可直接参考源码架构和数据流。应保留以下契约：
+VidLens 的后端审计提供跨进程状态、幂等、租约、SSE 和文件/数据库一致性的参考。FrameRead 采用 Java/Spring、MySQL、RocketMQ、Redis/Redisson 和 MySQL Checkpoint，正式合同以 [SPEC](../prototype/SPEC.md) 为准。
 
-1. FastAPI 内部写接口在一个 PostgreSQL transaction 中完成规范化输入、`Idempotency-Key` hash、task 创建和 durable outbox；返回 `task_id` 后由 GET 快照或 SSE 读取数据库 view。个人设置接口同样要有配置 revision，密钥只在服务端凭据存储解密。
-2. 用 PostgreSQL 的 `tasks`、`task_attempts`、`outbox`、`stage_results` 和 `task_events` 表达业务状态；幂等 scope/key/hash 优先由 tasks 的唯一约束承载，无独立生命周期需求不另建 idempotency 表。保留 generation、attempt、deadline、lease/fence、retry budget 和 unknown 调用账。运行取消先进入 `cancel_requested`，与发布在同一任务行上裁决；普通线程锁不能保护多进程执行权。
-3. 推荐 Celery+Redis 或等价 broker 只做投递，不让 Redis status 成为业务真相；Worker 领取前后都回数据库 Claim/fence，broker 丢任务由 outbox/reconciler 补投。Worker 方案不是用户硬约束，PG SKIP LOCKED 是可行的减项备选。
-4. 实现 `source.prepare → article.generate → publish` 与独立 `qa.answer`；文章发布必须在同一业务事务中校验 snapshot/frame、固定不可变文章版本和导图、写终态。草稿、attempt 和正式版本分开保存。
-5. 分享 token 绑定正式文章版本，公开路由只返回文章、导图和 allowlist 图片；撤销 token 后页面、图片和缓存均失效。导出读取同一正式版本，缺图或 hash 校验失败就是导出失败，不重新调用模型。
-6. 资源槽位优先复用任务/资源租约；若加入 Redis，区分短期协调与 PG 业务执行权。读取缓存故障可回源，保护供应商配额或机器容量的限流/准入失败则应暂停新受限工作，不能统一称为 best effort。媒体清理用持久引用和必要读取租约保护成果，在 PG 短事务内标记 deleting 后再删文件，防止检查引用与实际删除之间的竞态。
+1. HTTP 写入先完成身份、媒体归属、分析作用域和输入规范化，再按现行服务入口提交。202 表示受理，状态查询和 SSE 读取持久作用域，不把 Redis 活跃键当作最终完成状态。
+2. 分析作用域、受理代次、执行代次、阶段、失败台账和 Checkpoint 必须在重投、重连、管理员重放和晚到写回时保持一致。数据库锁、Redisson 锁和进程线程锁的保证范围分别记录。
+3. RocketMQ 负责消息投递和有限重投，Redis/Redisson 负责协调、缓存和租约。
+4. 结果和摘要分开保存。结构化报告按目标/模式读取，重新打开只读，不因 Markdown 存在自动调用模型。追问、反馈和计划修订沿现有 Java 入口处理。
+5. 媒体来源、字幕/ASR、OCR、关键帧、向量和文件引用必须核对同一用户和媒体。删除时封止写回、清理持久引用并验证共享对象，不能用缓存失效代替资源一致性。
+6. 超时、错误分类、预算、未知外部调用和结构化日志应落到真实视频链路。单机验证只证明当前部署边界，不能写成多机高可用或生产 SLA。
 
-7. 管理端推荐 REST+GET 快照+SSE，`task_events` 关键事件与状态同事务写入，缺口重新取快照，慢消费者有界断开。个人实例数据按实例归属；独立公开路由集合只允许 token 绑定的正式版本和图片，不需要增加多租户或强制登录。
-8. 超时、指数退避、错误分类和结构化请求/任务/调用关联日志纳入主链；缓存、provider 令牌桶及持续故障熔断需有对应场景和实验，不为关键词同时加入多种锁、队列或限流算法。单机 broker/Worker 故障恢复属于容错证据，不能直接表述为多机高可用。
-
-这样得到的个人自托管项目仍能展示后端岗位关心的状态机、幂等、队列、租约、失败恢复、事件同步和结果一致性，同时避免把 VidLens 的完整媒体处理、模型运营路由、外连策略和全部迁移一次性搬进 Python。更细的 Python 模块拆分属于重构设计，不是本次源码审计的已实现事实。
+VidLens 的 Go、PostgreSQL、Asynq、Outbox、文章发布和分享实现是参考对象事实。它们不证明 FrameRead 已实现，也不改变 FrameRead 的 Java 产品边界。

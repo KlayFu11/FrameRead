@@ -39,7 +39,7 @@
 | ChatModel/模型传输 | [model.go:146](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/model.go:146)、[model_call.go:55](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/model_call.go:55) | 创建 Eino OpenAI ChatModel，封装 `Generate`，做预算、路由、发送登记、usage、失败映射和重放 |
 | review/文章 loop 的单回合工具调用 | [article_loop.go:214](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/article_loop.go:214)、[workflow.go:204](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/workflow.go:204) | 每个逻辑回合绑定本阶段工具，由服务端解析和执行，未把业务状态交给 ADK 自动持有 |
 
-所以可迁移的是“模型调用加工具协议加业务状态机”的分层方式，不是把 Eino API 逐行翻成 Python。证据校验、文章草稿版本、审查结论、配图身份、额度、恢复和发布事务均在 investigator/domain/Store 侧。
+Eino 负责模型调用与工具协议。文章草稿、审查结论、配图身份、额度、恢复和发布事务由 VidLens 的 investigator、domain 和 Store 管理。
 
 ## 文章流程与问答 loop 的边界
 
@@ -59,7 +59,7 @@ V10–V12 是由服务端推进的阶段式流程，而不是让一个 Agent 自
 
 问答可带一个指定 frame，初始上下文在 [engine.go:199](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/engine.go:199) 交付；QA 文章引用只能作为文章导航，不是原视频证据。问答结果允许 `grounded`、`insufficient_evidence` 或 `out_of_scope`，并由 [validate.go:139](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/validate.go:139) 统一验证。外部资料工具只在当前 Turn 明确允许时启用，见 [references.go:46](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/references.go:46)。
 
-因此不能把“文章 Agent”直接当成 QA Agent。FrameRead 应保持两个业务入口：文章生成负责全片覆盖、图文结构和发布；问答负责当前问题的最小证据读取和独立答案，不要为每个问题重跑文章规划。
+因此不能把“文章 Agent”直接当成 QA Agent。FrameRead 也保持分析与追问的职责边界：分析负责按目标和模式生成结构化报告，追问负责当前问题的最小证据读取和独立答案，不因每个问题重新运行整条分析链。
 
 下文的限制必须按路径理解，不能横向套用到全部实现：legacy V1–V9 使用 `engine.go` 的 ADK Agent、全片 overview、`record_observation` 和 draft tools；V10–V12 使用 `workflow_*.go` 的 server-driven 阶段和独立 stage schema；ArticleLoop V1/V2 使用 `article_loop*.go` 自己的回合、预算和 wire 协议；QA 使用 `execution_context.go`、`answer_*.go` 的 focused reading。尤其是 `engine.go:390` 的主 instructions、旧路径的 overview 数量和旧 draft 工具，不是 ArticleLoop V2 或 staged workflow 的共同实现；各自的工具、prompt、预算和恢复限制以对应路径源码为准。
 
@@ -149,9 +149,9 @@ ArticleLoop 会把 calls/sends、no-progress、sections、draft bytes、revision
 
 以下内容是对首轮审计的补充校正，不改变上文中经源码确认的路径边界：
 
-1. **导图不是“可选附加页”。** `domain.Article` 固定包含 `mind_map` 字段（`internal/domain/types.go:326-339`），导图结构为根节点和父子节点（`types.go:311-320`）。`validateConceptMap` 要求导图存在、节点数不超过 80、叶节点能定位到章节，并限制分支深度（`internal/investigator/concept_map.go:15-56`）。因此旧报告中“内容导图可整体后置”只是旧工期下的 FrameRead 范围建议，不是 VidLens 没有导图。
+1. **导图是 VidLens 的文章对象事实。** `domain.Article` 固定包含 `mind_map` 字段（`internal/domain/types.go:326-339`），导图结构为根节点和父子节点（`types.go:311-320`）。`validateConceptMap` 要求导图存在、节点数不超过 80、叶节点能定位到章节，并限制分支深度（`internal/investigator/concept_map.go:15-56`）。这段事实不改变 FrameRead 当前结构化报告和无独立文章发布的范围。
 2. **关注点与解读深度已有明确语义。** 请求包含 `purpose` 和可选 `detail_level`（`internal/domain/generation.go:40-46`）；当前执行上下文规定 purpose 用于优先调查，不能跳过全片其余内容（`internal/investigator/execution_context.go:105-111`）。三档深度策略分别控制可选调查数和展开要求（`internal/domain/generation.go:65-80`）。FrameRead 可在此基础上显式区分“完整解读”和“关注点专题”，但不能把 VidLens 的 purpose 直接等同于专题模式。
-3. **内容来源已经是结构化类型。** `ContentOrigins` 区分 `video` 与 `background_explanation`，只有外部资料开启时才增加 `external_reference`（`internal/domain/generation.go:11-17`）。这为 FrameRead 区分视频证据、文章解释、一般知识和外部资料提供了源码参照。
+3. **内容来源已经是结构化类型。** `ContentOrigins` 区分 `video` 与 `background_explanation`，只有外部资料开启时才增加 `external_reference`（`internal/domain/generation.go:11-17`）。这为 FrameRead 区分视频证据、报告内解释、一般知识和外部资料提供了源码参照。
 4. **模型身份被冻结在业务规格中。** `GenerationSpec` 保存配置 ID、模型和模型 revision（`internal/domain/generation.go:29-39`），文章发布也保存生成模型（`internal/store/shares.go:239-245`）。这说明原项目已经把“进行中任务模型身份不能静默变化”作为业务事实，而不是前端展示字段。
 5. **恢复中的图片身份有专门防线。** ArticleLoop 恢复图片时若产生新 frame identity，会停止并保留原稿和调用账（`internal/investigator/context.go:412`）。FrameRead 的源媒体恢复也应沿用“内容身份不一致就失败，不静默替换证据”的原则。
 
@@ -164,14 +164,14 @@ ArticleLoop 会把 calls/sends、no-progress、sections、draft bytes、revision
 3. **schema 通过不等于可发布。** 文章和 QA 最终仍分别走 `validateArticle`/`validateAnswer`、证据/引用/图片校验、独立 review/revision，再由 Store 在同一数据库边界发布；自由文本或工具名本身不构成完成（[validate.go:27-168](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/validate.go:27)、[engine.go:348-388](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/engine.go:348)、[artifacts.go:255-346](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/store/artifacts.go:255)）。
 4. **文章和 QA 是两条语义不同的链。** 文章有责任完成全片结构化产出；QA 只围绕当前问题读取必要原文/文章/像素并提交 focused answer，不能把 article loop 的 overview、章节与 review 义务套到每个问题上（[execution_context.go:101-156](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/execution_context.go:101)、[answer_composition.go:9-48](D:/VScodeProject/FrameRead/reference-project/VidLens/internal/investigator/answer_composition.go:9)）。
 
-## 对 FrameRead 的边界建议
+## 对 FrameRead 的参考边界
 
-VidLens 最值得参考的是业务闭环和证据契约：冻结媒体 snapshot/transcript；有限 overview 和 targeted frame；把 observation、source read、frame identity、citation、limitation 和全片导图持久化；文章采用 plan/evidence → batch write → independent review → 一轮定向修订 → publish；问答使用独立的 focused read path；所有结果可通过 task/checkpoint/operation 恢复。
+VidLens 的可核对参考价值是业务状态与证据契约的分层。它把媒体快照、文本、帧身份、引用、限制、过程 Checkpoint 和结果保存分开管理，模型输出经过结构校验和服务端规则后才进入业务状态。FrameRead 可按 [PRD V3](../prototype/PRD.v3.md) 和 [SPEC](../prototype/SPEC.md) 采用同类边界。
 
-FrameRead 建议只保留一条文章主链和一条 QA 链，但已确认需求要求完整解读/关注点专题、解读深度、全片导图、外部资料开关和草稿恢复。文章主链可以由有界 LangGraph 图表达概览、规划、取证、章节写作、审查和定向修订；模型只产出受 schema 约束的阶段参数。PostgreSQL 保存 task、attempt、stage、source/frame evidence、draft、正式 article version、review result 和 publication result；Redis/Worker 只承担投递、租约和重试。LangGraph State/checkpoint 只服务任务内恢复和调试，不能获得跨进程执行权，也不能原子提交文件和数据库。证据与发布校验必须由 Python/domain 代码执行，不能由 prompt 单独保证。
+1. VideoContext 固定同源字幕/ASR、OCR、关键帧、时间区间和来源指纹。检索、四模式 Agent、报告与追问使用同一材料，不能被旧缓存或其他媒体的内容替换。
+2. Agent 只输出结构化过程和结果参数。时间证据、来源、模式 Section、预算和警告由 Java 服务校验，Checkpoint 和 MySQL 保存业务事实，Redis 只做协调和短期数据。
+3. 文章 loop、发布版本、全片导图和公开分享属于 VidLens 的产品对象。FrameRead 当前核心成果是按目标/模式保存的结构化视频分析报告，不把 VidLens 的文章表、分享 token 或发布事务写入 FrameRead 契约。
+4. QA 使用独立的追问和证据检索路径，区分视频证据与片外补充。追问不能触发隐式重新分析或越权读取其他用户媒体。
+5. 版本、租约、重试、过时写回和未知模型调用的恢复原则可作为实现参照。FrameRead 的具体消息、Checkpoint、RocketMQ 和 Redisson 合同以 SPEC 为准。
 
-FrameRead 不应同时搬入 VidLens 的 V1–V12 历史契约、legacy draft、ArticleLoop V1/V2 双版本、review cache/delta/challenge、复杂路由冷却和多种兼容恢复。固定一个当前文章契约、一个独立 review、一次定向修订、有限图片/模型调用上限；QA 保持独立 focused read path。专题文章可以省略非关注内容，但全片导图仍从全片规划生成，导图节点必须保存时间范围，`section_id` 只在文章确有对应章节时存在，避免产生失效章节引用。这样能保留“可验证的后端业务工程”价值，同时避免把 Eino 版本和 Go 兼容历史变成 FrameRead 的主要工作。
-
-2026-10-30 用户已明确 VidLens 为自己的项目，直接参考 `D:/VScodeProject/FrameRead/reference-project/VidLens` 的源码架构和数据流，不再审议项目使用授权。状态机、证据身份、引用校验、调用账、持久恢复与失败分类均是可直接研读的实现参照；Python/LangGraph 重设计按语言生态和接口耦合决定，不以 Eino 为前置条件，也不机械翻译历史兼容代码。
-
-后端学习目标不等于另建通用 Runtime。FrameRead 应把 task/attempt/stage/call 的关联日志、跨进程执行权、超时/取消、有限重试与副作用幂等落到真实视频链路；LangGraph checkpoint 不独立裁决业务终态，恢复未知模型请求时不承诺 exactly-once 或只计费一次。具体方案与采用边界见总报告第7.2、7.4节，仍是待实现设计。
+VidLens 的 Go/Eino、文章版本、兼容路径和测试数字是参考对象事实。它们不证明 FrameRead 已实现或已通过运行验收。

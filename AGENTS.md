@@ -4,55 +4,83 @@
 
 ## 项目概览
 
-FrameRead 是面向 AI 应用／Agent 开发岗位面试的个人视频理解项目，以真实业务展示和学习后端工程能力，并体现适量的 React/TypeScript 全栈交付能力。AI 负责主要实现，用户参与设计、审查、调试和学习。项目采用个人 Docker 自托管、免注册、用户自行配置模型服务与 API 的使用方式；管理入口使用单一管理员凭据，与只读分享入口隔离。技术栈以 Python、PostgreSQL、Redis、React/TypeScript 为主；LangGraph 按业务流程的实际价值引入，Go 仅在有明确重大收益时考虑。
+FrameRead 是一个完整的长视频理解与分析平台。开发以当前工程基线为基础持续完善，所有核心功能、业务流程、模块职责、技术架构和工程能力统一纳入设计、实现与验收。正式项目文档描述完整产品、技术契约和验证结果。
+
+用户登录后可以上传或分片续传本地视频，也可以导入 Bilibili、YouTube 等可公开获取的单视频链接。系统使用平台字幕或 ASR，结合关键帧和 OCR 构建视频上下文，经证据检索和四模式 Agent 分析生成带时码的结构化 Markdown 报告，并支持连续追问、反馈、计划修订和导出。分析提供异步进度和失败恢复，Web 工作区与浏览器扩展通过同一后端处理媒体和分析。
+
+后端采用 Java 21、Spring Boot 和 LangChain4j。MySQL、MyBatis-Plus 与 Flyway 管理业务数据，Redis/Redisson 负责会话、缓存与协调，RocketMQ 投递分析，MinIO 保存资源，Qdrant 支持向量检索。前端使用 Vue 3 与 Vite，浏览器扩展基于 Manifest V3。Docker Compose 启动中间件，应用与媒体工具按部署契约配置和运行。
+
+产品范围、业务流程和验收以 [PRD V3](docs/prototype/PRD.v3.md) 为准。系统设计、模块接口、数据与运行契约以 [全局技术 SPEC](docs/prototype/SPEC.md) 为准。
 
 ## 目录结构
 
-当前仓库以设计文档为主，标注“规划”的目录尚未建立。源码分层以 [SPEC §2](docs/prototype/SPEC_V1.md#spec-02) 为准，模块归属与实施顺序见[模块地图](.scratch/frameread-v1/map.md)。
-
 ```text
 FrameRead/
-├── backend/                 # 规划：Python 后端
-│   ├── src/frameread/        # API、领域与业务服务、数据库、Worker、媒体和生成编排
-│   └── tests/               # 单元、接口、集成与故障测试
-├── frontend/                # 规划：React/TypeScript 前端
-│   └── src/                 # 管理端 admin、分享端 public、共享展示 shared
-├── deploy/                  # 规划：Docker Compose、镜像与入口代理
-├── scripts/                 # 规划：验收与实验入口
+├── server/                         # Spring Boot 应用和 Maven 构建入口
+│   └── src/
+│       ├── main/java/com/example/server/
+│       │   ├── controller/         # HTTP、SSE 入口
+│       │   ├── consumer/           # RocketMQ 消费入口
+│       │   ├── service/            # 身份、媒体、上下文、分析、检索与恢复
+│       │   │   └── mode/           # 四模式配置、登记和 AUTO 路由
+│       │   ├── repository/         # 持久化访问
+│       │   ├── mapper/、entity/    # 数据映射与持久化实体
+│       │   ├── dto/                # 请求、响应、消息与分析数据
+│       │   ├── common/、exception/ # 公共响应、错误码和异常
+│       │   ├── config/             # 装配、鉴权与基础设施配置
+│       │   └── utils/              # 模型、媒体工具和对象存储适配
+│       ├── main/resources/         # 应用配置、db/migration 和评估样例
+│       └── test/java/              # 后端测试，与被测包对应
+├── client/src/                     # Vue 工作区、API/SSE、播放器、报告与测试
+├── extension/                      # MV3 侧栏、后台脚本、lib/ 与 tests/
+├── docker-compose.yml              # 中间件编排
+├── .env.example                    # 环境配置样例
+├── rocketmq/                       # Broker 配置
+├── scripts/                        # 启动与环境检查
+├── .github/workflows/              # CI
 ├── docs/
-│   ├── prototype/           # PRD、技术 SPEC 与需求追踪
-│   ├── adr/                 # 架构决策
-│   ├── agents/              # 任务跟踪与领域文档约定
-│   ├── research/            # 可行性与参考项目分析
-│   ├── reviews/             # 需求变更与冻结记录
-│   ├── cite/                # 文档写法参考
-│   └── validation/          # 规划：实现阶段的验收证据
-└── .scratch/                # 模块地图、后续模块 SPEC 与切片 Ticket
+│   ├── prototype/                  # 产品需求、全局技术规格和验收索引
+│   ├── adr/                        # 架构决策
+│   ├── agents/                     # 任务跟踪与领域文档约定
+│   ├── research/                   # 工程核查与独立调研
+│   └── cite/                       # 文档写法参考
+└── .scratch/                       # 模块地图、模块 SPEC、集成契约和切片 Ticket
 ```
 
-`reference-project/` 与 `docs/jobs/` 仅供本地参考，已被 `.gitignore` 排除，克隆仓库不包含这些资料。项目简介见 [README](README.md)，术语见 [GLOSSARY](GLOSSARY.md)；本文件维护 Agent 协作规则，`CLAUDE.md` 仅作兼容入口。
+Web 与扩展通过 HTTP/SSE 访问后端。`controller` 与 `consumer` 调用 `service`，由服务层协调业务、持久化与外部适配。链接识别归媒体接入，下载工具调用归外部适配，字幕采用和 ASR 回退归 `VideoContext` 的构建流程。分析协调取得固定材料后调用四模式 Agent，Agent 通过检索取得同源证据，结果和恢复状态由分析协调保存。数据归属和依赖见 [SPEC 架构与模块接口](docs/prototype/SPEC.md#spec-architecture) 与[模块地图](.scratch/frameread-v1/map.md)。
+
+## 交付标准
+
+系统可按部署文档在独立实例中复现启动，核心用户旅程稳定运行，交付时无阻断性缺陷。按 PRD 和 SPEC 验证权限、视频接入、分析报告、追问与导出，并提供异步执行、重复处理、失败恢复和真实依赖的可复核证据。
+
+工程实现和技术深度应达到 Java 后端开发岗位简历展示、项目讲解和技术面试追问的水平。能依据实际实现和验证解释接口设计、数据归属、事务边界、消息投递、并发控制、恢复行为及取舍。性能结论使用同条件实测数据。
 
 ## 协作
 
 - 创建表的时候需要尽可能先看已有的表是否可以复用，并且创建表要填加逻辑删除、创建时间、更新时间、乐观锁版本。
 - SQL 查询优先保持简单，避免 N+1；是否使用关联或在代码中组装，应根据执行计划、查询次数、实际延迟和 I/O 判断，不设关联表数量上限。重要查询和修改需检查索引、扫描范围及实际开销，保留必要的测量证据。
 - 无论本轮对话任务多少，都优先召唤多个 agent 并行协作，各司其职以加快推进；任务完成后及时关闭不再需要的 agent。
-- 代码逻辑能复用就复用、只补关键生产链路、单测重点覆盖行为变化、缺陷复现和高风险边界，不需要每次改完代码都要自动编译
+- 优先复用能满足契约的实现。没有明确复用或职责划分需求时，使用直接的实现。兼容逻辑以实际调用方或数据兼容要求为依据。
+- 代码风格以仓库的一致性为先。格式调整限于本次改动范围，注释解释代码本身无法表达的意图和约束。
 - 多 agent 协作时必须划清职责范围，避免多个 agent 同时修改同一文件，最终由主 agent 汇总、去重、裁决冲突后再落地。
 - 编写技术文档、交接文档等时，只写读者当前需要的信息，已有说明用相对路径链接到原文或具体章节，供读者按需查阅。
 - 修正文档或代码错误时，直接更新原处及受影响的引用，清除过时说明和注释掉的错误实现。交付内容只保留当前正确的表述或行为。
 - 动手前先查本项目的相似功能、组件、错误处理和测试，读清相关调用关系。本地缺少合适参考时，再查官方文档或 GitHub 公开项目。选最相关的 1～3 个参考，说明采用哪种做法，一个足够就停止搜索。对外检索只用通用关键词，禁止上传私有源码、日志或客户数据。采用第三方代码前核对版本、适配性和许可证。
   检索源码时默认跳过依赖和构建目录，排查打包、依赖或接口问题时再按需读取产物、锁文件和生成代码。
-- 不提交 .env* / *.pem / *.key / 密钥，不编辑 <生成目录，如 src/gen/> 下的生成文件 ，不经显式要求不跑 git push / git reset --hard / force-push / 破坏性 DB 命令 ，不"修复"失败测试（不放松断言、不加 .skip）
+- 可提交仅含占位凭证的 `.env.example`。其他 `.env*`、`*.pem`、`*.key` 和实际密钥留在 Git 之外。生成文件通过生成流程更新。`git push`、`git reset --hard`、force push 和破坏性数据库命令须经显式授权。
 - 每个阶段完成后，应进行局部验证，再形成 commit。
 - 如果问题仅集中在 SQL 或事务修复方案，优先采用 commit 级回滚。
 
 ## AI Coding工作流
 
+- 在现有 PRD、全局技术 SPEC 和 ADR 的基础上，以**开发切片为推进单位**，对当前切片涉及的业务需求、模块职责、接口及跨模块协作执行 `/grill-with-docs`，完成需求与实现设计对齐；随后通过 `/to-spec` 将确认的设计归入对应模块的详细 SPEC，再通过 `/to-tickets` 拆分为可独立验证的端到端开发任务，最后使用 `/implement` 逐项开发、测试、审查并完成切片验收。**每个开发切片必须保留一份简短的跨模块集成契约**，明确端到端业务流程、模块调用关系、数据流转、关键状态与事务边界及整体验收条件，避免各模块 SPEC 独立正确却无法协同完成业务闭环。
 - 设计方案时，默认给出一个能完整满足已确认需求、可实施且可验收的方案，禁止以“第一版先做，观察后再说”推迟必要决策。仅在确有取舍时并列各自可行的方案，说明适用条件和代价，禁止按“稳妥／激进”分档凑选项。
 - 仅在用户明确要求进入 Plan Mode 时切换模式。
-- 代码采用快速失败（fail-fast）：在首次发现错误处立即抛出或返回错误并向调用方传播，禁止捕获后继续执行、返回默认值或擅自启用 fallback。
-- Python 的必需依赖直接 `import`。只有用户明确要求时才可用 `try/except` 包裹导入。Python 文件开头禁止添加模块级 docstring 或 shebang。必要注释用中文说明意图，技术术语保留英文。
+- 输入在负责该契约的系统边界校验一次。经过不同的权限、网络或事务边界时，由对应模块校验其负责的约束。
+- 不可继续的错误在发现处返回或抛出。只在需要转换错误、清理资源或执行已约定的重试与降级时捕获异常，保留诊断所需原因。字幕回退 ASR 等行为按 SPEC 执行。
+- Python 项目有 `uv.lock` 时使用 `uv`。路径操作优先 `pathlib`，类型注解优先 `X | None` 和 `list[str]`。必需依赖直接 `import`，仅经用户明确要求才对导入使用 `try/except`。Python 文件开头禁止添加模块级 docstring 或 shebang。
+- Julia 使用 `--project` 隔离依赖环境。`struct` 字段优先用具体类型或类型参数，函数参数在需要 dispatch 时标注。按行为使用 multiple dispatch，关注热路径的 type stability。
+- 必要注释用中文说明意图，技术术语保留英文。
 - 修改代码一律使用文件编辑工具。禁止使用 heredoc、Python、sed、Perl 或其他脚本、命令生成、替换或批量改写代码。
 - Bash 中保持命令简短。执行较长或多行的 Bash、Python 脚本时，先用文件编辑工具写成脚本文件，再调用该文件。
 
@@ -85,7 +113,7 @@ FrameRead/
 
 - 使用 Bash 和 curl 对实际运行的接口进行验证，检查状态码、响应内容及预期业务结果；异步任务需继续验证状态变化和最终结果。
 - 每个 curl 独立执行，不串联多个 curl；响应写入独立临时文件，再用 python3 独立解析和断言。Bash 环境使用 /tmp/ 下的任务专属临时目录；其他环境使用等效临时目录和可用的 Python 解释器。Windows PowerShell 使用 curl.exe，避免命令别名差异。
-- 仅当被测接口确实需要登录时，采用“登录 → 响应写文件 → 提取 token → 后续请求携带”的流程。项目免登录接口不增加登录步骤；凭证不得写入日志或提交到 Git。
+- 受保护接口按登录契约携带会话凭证，验证用户、媒体归属和管理员边界。凭证留在本地验证环境，避免进入日志或 Git。
 - 验证前确认服务地址、日志位置和数据库连接配置入口；出现异常时结合日志、响应与必要的数据库状态定位原因。
 
 ### 前端页面验证
@@ -120,24 +148,15 @@ FrameRead/
 
 ## 文档导航
 
-采用渐进式披露：先根据当前任务从下表选择入口，只读取相关章节；需要核实实现时，再沿文档中的线索定位源码、调用关系和数据流。不要每轮通读所有文档，也不要把历史报告或 prompt 中的任务指令自动视为当前任务授权。
+按任务选择入口并读相关章节。实现结论以源码和实际验证为依据，任务范围以当前授权为准。
 
-参考项目的当前版本以本地 [VidLens](reference-project/VidLens/) 和 [DoVideoAI](reference-project/DOVideo/) 为准；后续本地源码变化时，定向复核受影响的结论。VidLens 是用户自己的 GitHub 项目，作为主要业务与架构参考；DoVideoAI 作为辅助工程实践参考。设计 FrameRead 时按 Python 生态重新设计，不再重复讨论 VidLens 的许可证、项目归属或使用授权，代码复用与改写依据技术耦合和设计收益判断。区分参考项目现有实现、FrameRead 设计建议和实际验证结果，不把计划写成完成；涉及实现的结论应以对应源码和验证证据核实。
-
-| 读取时机 | 文档或入口 | 用途与边界 |
+| 读取时机 | 文档或入口 | 用途 |
 | --- | --- | --- |
-| 使用工程 Skills 跟踪任务、分流或读取领域文档时 | [Issue tracker](docs/agents/issue-tracker.md) · [Triage labels](docs/agents/triage-labels.md) · [Domain docs](docs/agents/domain.md) | 本地任务文件约定、状态词汇与领域文档读取规则。 |
-| 按模块 Grill、编写模块 SPEC、拆分或实现 Ticket，或查看实施进度时 | [模块地图与进度](.scratch/frameread-v1/map.md) | 模块职责、数据归属、依赖、实施顺序与进度板；模块 SPEC 与切片 Ticket 的入口。 |
-| 确认 V1 产品目标、业务流程、功能边界或验收标准 | [V1 产品需求文档](docs/prototype/PRD.md) · [术语表](GLOSSARY.md) · [ADR](docs/adr/) | 已确认的产品契约与五维验收入口。 |
-| 追溯技术选型、参考版本、本地 Compose 交付或工程强化范围 | [FrameRead_Feasibility_Analysis.md](docs/research/FrameRead_Feasibility_Analysis.md) | 架构与实施依据；P1 验收以 PRD 为准，建议和待验证项不代表已实现。 |
-| 设计或审查 API、数据库、任务队列、存储及后端数据流 | [VidLens_Backend_Audit.md](docs/research/VidLens_Backend_Audit.md) | VidLens 后端实现证据与迁移参考，按所涉模块查阅。 |
-| 设计或审查 Agent、内容生成、问答及流程编排 | [VidLens_Agent_Audit.md](docs/research/VidLens_Agent_Audit.md) | VidLens Agent 调用链与能力边界，作为 FrameRead 编排设计的参考。 |
-| 处理视频获取、字幕与转写、截图、前端、导出、分享或媒体生命周期 | [VidLens_Media_Frontend_Audit.md](docs/research/VidLens_Media_Frontend_Audit.md) | 媒体与前端实现证据，按具体功能定位对应链路。 |
-| 报告不足以回答问题，或需要核实参考项目实际行为 | [VidLens/](reference-project/VidLens/) · [DoVideoAI/](reference-project/DOVideo/) | 当前参考版本的源码入口；先定位模块和符号，再读相关实现与调用方，不默认扫描整个参考项目。 |
-| 明确开展新一轮源码审查，或追溯已有报告的审查范围 | [FrameRead_Review_Prompt.md](docs/research/FrameRead_Review_Prompt.md) | 历史审查任务模板；仅在当前任务授权范围内使用，不能替代当前需求。 |
-| 整理面试展示、简历证据或核查岗位匹配 | [FrameRead_Job_Evidence.md](docs/research/FrameRead_Job_Evidence.md)；本地 `docs/jobs/` 下的 `岗位证据与技术频率.md`、`岗位明细.md` | 先查 FrameRead 岗位映射；后两份为未随仓库发布的本地来源，有资料时再追溯岗位原文与统计口径。 |
-| 回顾项目选型或重新比较项目方向 | 本地 `docs/jobs/` 下的 `第二简历项目选型报告.md`、`视频工作台技术栈与实习适配报告.md`、`项目差异化价值复核报告.md` | 未随仓库发布的历史选型依据，不覆盖当前已确认的项目需求。 |
-| 设计或审查并发控制、查询优化、异步任务恢复等后端方案时 | 本地 `docs/jobs/` 下的 `后端简历项目报告.md`、`后端简历项目逐项拆解.md` | 有本地资料时先定位工程问题，再按需查阅案例；仅在 FrameRead 有同类业务约束且方案适用时借鉴，成效以本项目验证为准。 |
-| 讨论求职准备、实习工作内容或能力补齐 | 本地 `docs/jobs/` 下的 `上海大厂岗位加分项与技术栈报告.md`、`实习工作内容与企业Agent项目价值报告.md`、`下一段上海大厂实习准备报告.md` | 未随仓库发布的职业背景资料，仅在相关任务且有本地资料时按需读取。 |
+| 确认产品能力、业务旅程或验收标准 | [PRD V3](docs/prototype/PRD.v3.md) | 产品范围、用户操作、异常行为与 A3 验收。 |
+| 设计或审查 API、数据、媒体处理、分析和异步恢复 | [全局技术 SPEC](docs/prototype/SPEC.md) · [ADR](docs/adr/) | 模块职责、事务和运行契约，按主题查架构决策。 |
+| 对齐模块、编写规格、拆分或实现 Ticket | [模块地图](.scratch/frameread-v1/map.md) · [Issue tracker](docs/agents/issue-tracker.md) · [Triage labels](docs/agents/triage-labels.md) | 模块归属、依赖、切片文件和流转状态。 |
+| 确认领域术语或编写 ADR | [术语表](GLOSSARY.md) · [Domain docs](docs/agents/domain.md) | 业务词汇及领域文档约定。 |
+| 核实工程实现或规划验证 | [架构审查](docs/research/FrameRead_Architecture_Audit.md) · [实施依据](docs/research/FrameRead_Feasibility_Analysis.md) · [评审模板](docs/research/FrameRead_Review_Prompt.md) | 静态证据、验证重点和审查入口。 |
+| 整理 Java 后端面试展示与工程证据 | [岗位与项目分析](docs/research/FrameRead_Job_Evidence.md) | 样本口径、工程能力映射与待验证证据。 |
 
-新增、迁移或调整项目文档时，先分析其用途、适用范围和读取时机，再维护本节的入口、说明及失效链接；被替代的文档标明历史用途。导航只保留定位信息，详细需求和设计留在对应文档，不复制正文。
+修改契约时原位更新权威文档及受影响的链接。导航只保留定位信息，详细需求和设计留在对应文档。
